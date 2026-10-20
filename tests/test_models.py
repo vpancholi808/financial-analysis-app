@@ -143,4 +143,4 @@ def test_no_demo_generated_or_referenced():
     src=(Path(__file__).resolve().parents[1]/'app.py').read_text()
     assert 'demo_data(' not in src
     assert 'Synthetic Company' not in src
-    assert (Path(__file__).resolve().parents[1]/'universe.csv').read_text().count('\n')==1
+    assert 'Synthetic Company' not in (Path(__file__).resolve().parents[1]/'universe.csv').read_text()
