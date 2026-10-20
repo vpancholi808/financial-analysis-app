@@ -11,6 +11,7 @@ from finance_models import (GICS_SECTORS, ScreenSettings, prepare, classify,
                             scope_filter, validate_universe)
 from research import evidence, metric, research_report, growth
 from build_universe import extract_company
+from sp500_pipeline import anomaly_flags
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title='Financial Analysis | Equity Research', page_icon='📈',
@@ -122,15 +123,23 @@ with st.sidebar:
     st.markdown('#### Full US Equity Universe')
     data=saved_universe()
     state=collection_state()
-    st.metric('Verified companies',f'{len(data):,} / 1,000')
-    st.progress(min(1.0,len(data)/1000))
-    st.caption('Yahoo Finance annual statements; TSM (pitch company) excluded')
+    members_path=ROOT/'sp500_constituents.csv'
+    member_count=0
+    if members_path.exists():
+        membership=pd.read_csv(members_path)
+        member_count=len(membership)
+        data=data.loc[data.ticker.astype(str).isin(set(membership.ticker))].copy()
+    else:
+        data=data.iloc[0:0].copy()
+    st.metric('S&P 500 statements imported',f'{len(data):,} / {member_count:,}' if member_count else 'Awaiting index list')
+    st.progress(min(1.0,len(data)/member_count) if member_count else 0.0)
+    st.caption('S&P 500 constituents · Yahoo Finance financials · TSM excluded')
     if state:
         st.caption(f"Processed {int(state.get('cursor',0)):,} candidates.")
     st.caption('Full-universe collection is managed through GitHub Actions.')
 
 if data.empty:
-    st.warning('Awaiting verified Yahoo Finance financial statements. No synthetic data is displayed.')
+    st.warning('S&P 500 financial collection has not published its first matched statements. Previous non-index stocks are hidden; no synthetic data is displayed.')
     st.markdown('[Check collection workflow](https://github.com/vpancholi808/financial-analysis-app/actions)')
     st.stop()
 
@@ -163,12 +172,12 @@ view=classify(filtered,settings)
 buys=view.loc[view.BUY_candidate].sort_values('BUY_score',ascending=False)
 sells=view.loc[view.SELL_candidate].sort_values('STA',ascending=False)
 
-status='SAVED REAL YAHOO FINANCIALS'
+status='S&P 500 · SAVED REAL YAHOO FINANCIALS'
 st.caption(f'{status} · {len(base)} fetched company records · {len(filtered)} shown after filters · no synthetic securities')
 if 'TSM' not in excluded:
     st.error('TSM must be excluded in config.json.')
-if len(base)<500:
-    st.warning(f'Collection in progress: {len(base)} real company records. The assignment requires 500+ unless the approved single-industry alternative is used. Small peer samples may suppress sector percentiles.')
+if len(base)<member_count:
+    st.warning(f'S&P 500 coverage: {len(base):,} of {member_count:,} constituent listings ({len(base)/member_count:.1%}). Missing statements are not scored. Screen rankings are provisional until coverage is sufficient.')
 
 if page=='Stock Screener':
     col1,col2,col3,col4=st.columns(4)
@@ -176,6 +185,45 @@ if page=='Stock Screener':
     col2.metric('BUY candidates',len(buys))
     col3.metric('SELL candidates',len(sells))
     col4.metric('Conflicting signals',int(view.conflicting_signals.sum()))
+    audit_path=ROOT/'data_quality.csv'
+    audit=pd.read_csv(audit_path) if audit_path.exists() else pd.DataFrame()
+    a,b,c=st.columns(3)
+    a.metric('Constituent coverage',f'{len(base)/member_count:.1%}' if member_count else 'N/A')
+    b.metric('Missing S&P 500 statements',max(0,member_count-len(base)))
+    c.metric('Reported data anomalies',len(audit.loc[audit.severity.isin(['warning','critical'])]) if 'severity' in audit else 0)
+    if not audit.empty and {'ticker','severity','issue'}.issubset(audit):
+        with st.expander('Data quality · flagged abnormalities and missing constituents'):
+            st.caption('Flags invite verification against original SEC or issuer filings. Missing inputs are not silently imputed.')
+            st.dataframe(audit[['ticker','severity','issue','detail']].head(500),hide_index=True,use_container_width=True)
+            st.download_button('Download full data-quality audit',audit.to_csv(index=False),'sp500_data_quality.csv','text/csv')
+    st.subheader('Financial factor visualizations')
+    if not view.empty:
+        left,right=st.columns(2)
+        with left:
+            valid=view.loc[view.GPA.notna() & view.STA.notna()].copy()
+            if not valid.empty:
+                valid['Gross profitability (%)']=valid.GPA*100
+                valid['Accruals / assets (%)']=valid.STA*100
+                fig=px.scatter(valid,x='Gross profitability (%)',y='Accruals / assets (%)',color='sector',
+                    hover_name='ticker',hover_data=['name'],title='Profitability vs. earnings-quality risk',
+                    color_discrete_sequence=px.colors.qualitative.Safe)
+                fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
+                st.plotly_chart(fig,use_container_width=True)
+        with right:
+            quality=view.groupby('sector',as_index=False).agg(Companies=('ticker','size'),GPA_median=('GPA','median'))
+            quality['GPA_median']=quality.GPA_median*100
+            fig=px.bar(quality.sort_values('GPA_median'),x='GPA_median',y='sector',
+                orientation='h',title='Median gross profitability (%) by sector',
+                color_discrete_sequence=['#20B59A'])
+            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
+            st.plotly_chart(fig,use_container_width=True)
+        if {'GPA','STA','BM'}.issubset(view):
+            factors=view[['GPA','BM','STA']].replace([np.inf,-np.inf],np.nan).dropna(how='all')
+            if len(factors)>=5:
+                fig=px.box(factors.melt(var_name='Factor',value_name='Ratio'),x='Factor',y='Ratio',
+                    color='Factor',points='outliers',title='Accounting factor distributions · possible outliers')
+                fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
+                st.plotly_chart(fig,use_container_width=True)
     st.subheader('Fundamental opportunity map')
     a,b=st.columns([2.1,1])
     with a:
@@ -221,6 +269,10 @@ if page=='Stock Screener':
         med['median_BM']=med['median_BM'].apply(lambda n:'N/A' if pd.isna(n) else f'{n:.2f}x')
         st.dataframe(med,use_container_width=True,hide_index=True)
         st.caption('These are full-universe peer benchmarks; banks and REITs are not ranked with industrial companies.')
+        if not audit.empty and 'severity' in audit:
+            st.write('Detected data-quality issues by type')
+            problems=audit.groupby(['severity','issue']).size().reset_index(name='Count').sort_values('Count',ascending=False).head(15)
+            if len(problems): st.plotly_chart(px.bar(problems,x='Count',y='issue',color='severity',orientation='h'),use_container_width=True)
     with st.expander('Calculation methodology & data-quality audit'):
         st.markdown('''**GPA** = (revenue − cost of revenue) / assets · **B/M** = positive common equity / market cap (same currency) · **STA** = (net income − operating cash flow) / assets. Sector percentiles are calculated before user filtering. No missing inputs are filled with zero. When there are fewer than 10 valid peers, percentiles are shown as unavailable.''')
         st.json(validate_universe(base))
@@ -239,6 +291,9 @@ elif page=='Company Fundamentals':
     b.metric('GPA',fmt_value(r.GPA,True))
     c.metric('B/M',fmt_value(r.BM))
     d.metric('STA',fmt_value(r.STA,True))
+    flags=anomaly_flags(r.to_dict())
+    if flags:
+        st.warning('Data quality review: '+', '.join(x['issue'] for x in flags[:5]))
     t1,t2,t3=st.tabs(['Financial dashboard','Peer benchmarks','Audit inputs'])
     with t1:
         x,y=st.columns([1.6,1])
@@ -267,6 +322,12 @@ elif page=='Company Fundamentals':
                              'Industry percentile':r[m+'_industry_pct'],
                              'Sector observations':r[m+'_sector_count']} for m in ['GPA','BM','STA','ROA','CFOA']])
         st.dataframe(peers,hide_index=True,use_container_width=True)
+        observed=peers.loc[peers['Sector percentile'].notna()].copy()
+        if len(observed):
+            fig=px.bar(observed,x='Metric',y='Sector percentile',title='Company percentile position among S&P sector peers',text_auto='.0f',color='Metric')
+            fig.update_yaxes(range=[0,100])
+            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636',showlegend=False)
+            st.plotly_chart(fig,use_container_width=True)
         if not r.industrial_applicable:st.warning('Specialist accounting is required for this sector; industrial rankings are deliberately unavailable.')
     with t3:
         fields=['revenue','cost_of_revenue','gross_profit','total_assets','common_equity','market_cap',
