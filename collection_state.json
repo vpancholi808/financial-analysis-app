@@ -1,5 +1,5 @@
 {
-  "attempted_total": 442,
+  "attempted_total": 443,
   "attempts": {
     "A": 1,
     "ABNB": 1,
@@ -166,7 +166,7 @@
     "FFIV": 1,
     "FICO": 1,
     "FIS": 1,
-    "FISV": 1,
+    "FISV": 2,
     "FITB": 1,
     "FIX": 1,
     "FLEX": 1,
@@ -955,11 +955,11 @@
   "membership_source": "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv",
   "membership_status": "fresh",
   "missing_records": 1,
-  "new_records_last_batch": 366,
+  "new_records_last_batch": 0,
   "quality_critical_count": 0,
   "quality_warning_count": 2,
   "statement_completeness": 0.8924302788844621,
   "status": "collecting",
   "universe": "SP500",
-  "updated_at": "2026-10-20T19:52:05+00:00"
+  "updated_at": "2026-10-20T22:29:23+00:00"
 }
