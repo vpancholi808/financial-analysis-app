@@ -10,6 +10,16 @@ def metric(val, percent=False):
     return f'{val * 100:,.2f}%' if percent else f'{val:,.3f}'
 
 
+def readable_amount(value, currency='USD'):
+    if pd.isna(value): return 'Unavailable'
+    amount=abs(float(value))
+    formatted=(f'{amount/1e12:,.2f}T' if amount>=1e12 else
+               f'{amount/1e9:,.2f}B' if amount>=1e9 else
+               f'{amount/1e6:,.2f}M' if amount>=1e6 else
+               f'{amount/1e3:,.1f}K' if amount>=1e3 else f'{amount:,.0f}')
+    prefix='$' if currency=='USD' else currency+' '
+    return ('-' if value<0 else '')+prefix+formatted
+
 def growth(current, prior):
     """Avoid misleading percent changes from nonpositive prior-year bases."""
     if pd.isna(current) or pd.isna(prior) or prior <= 0:
@@ -23,7 +33,7 @@ def evidence(row):
     good, risks, gaps = [], [], []
     if pd.notna(r.get('GPA')):
         good.append(f"Gross profitability of {metric(r['GPA'], True)} of assets "
-                    f"(gross profit {metric(r.get('gross_profit'))} in reporting-currency units).")
+                    f"(gross profit {readable_amount(r.get('gross_profit'),str(r.get('financial_currency') or 'USD'))} in reporting-currency units).")
     else:
         gaps.append('Gross profit or assets needed for GPA.')
     if pd.notna(r.get('BM')):
@@ -60,6 +70,7 @@ def evidence(row):
 def research_report(row, analyst_note=''):
     r = row
     ev = evidence(r)
+    currency=str(r.get('financial_currency') or 'USD')
     ticker = str(r.get('ticker', '')).upper()
     src = str(r.get('data_source', 'Unavailable'))
     asof = str(r.get('price_asof', 'Unavailable'))
@@ -78,13 +89,13 @@ def research_report(row, analyst_note=''):
                 '', '## Financial facts']
     sections += [f'- {v}' for v in ev['facts']] or ['- Required data unavailable.']
     sections += ['', '## Source financial inputs (reported units)',
-                 f'- Revenue: {metric(r.get("revenue"))}',
-                 f'- Gross profit: {metric(r.get("gross_profit"))}',
-                 f'- Net income: {metric(r.get("net_income"))}',
-                 f'- Operating cash flow: {metric(r.get("operating_cash_flow"))}',
-                 f'- Total assets: {metric(r.get("total_assets"))}',
-                 f'- Common equity: {metric(r.get("common_equity"))}',
-                 f'- Market capitalization: {metric(r.get("market_cap"))}',
+                 f'- Revenue: {readable_amount(r.get("revenue"),currency)}',
+                 f'- Gross profit: {readable_amount(r.get("gross_profit"),currency)}',
+                 f'- Net income: {readable_amount(r.get("net_income"),currency)}',
+                 f'- Operating cash flow: {readable_amount(r.get("operating_cash_flow"),currency)}',
+                 f'- Total assets: {readable_amount(r.get("total_assets"),currency)}',
+                 f'- Common equity: {readable_amount(r.get("common_equity"),currency)}',
+                 f'- Market capitalization: {readable_amount(r.get("market_cap"),str(r.get("market_currency") or "USD"))}',
                  '', '## Accounting risks']
     sections += [f'- {v}' for v in ev['risks']] or ['- No quantified STA red flag in the available indicators; this does not prove absence of risk.']
     sections += ['', '## Missing evidence and model limitations']
