@@ -1,5 +1,10 @@
 name: Collect US company fundamentals
 on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/collect-universe.yml'
+      - 'collect_universe_batch.py'
   workflow_dispatch:
   schedule:
     - cron: '27 * * * *'
