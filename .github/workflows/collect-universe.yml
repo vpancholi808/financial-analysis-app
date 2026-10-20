@@ -1,64 +1,59 @@
-name: Collect US company fundamentals
+name: Collect S&P 500 Yahoo financial statements
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
+      - 'sp500_pipeline.py'
       - '.github/workflows/collect-universe.yml'
-      - 'collect_universe_batch.py'
-  workflow_dispatch:
   schedule:
     - cron: '27 * * * *'
 permissions:
   contents: write
 concurrency:
-  group: yahoo-financial-collection
+  group: sp500-yahoo-collection
   cancel-in-progress: false
 jobs:
   collect:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Fetch next batch of genuine financial statements
-        id: fetch
-        continue-on-error: true
-        run: python collect_universe_batch.py --target 1000 --batch-size 90 --pause 1.2
-      - name: Validate data integrity
+      - name: Fetch 75 constituent financial statements and audit abnormalities
+        run: python sp500_pipeline.py --batch-size 75 --retry-cap 3 --pause 0.7
+      - name: Validate output against constituent membership
         run: |
           python - <<'PY'
           import pandas as pd
+          m=pd.read_csv('sp500_constituents.csv')
           d=pd.read_csv('universe.csv')
-          if len(d):
-              assert d.ticker.nunique()==len(d)
-              assert not d.ticker.str.upper().eq('TSM').any()
-              assert (d.total_assets>0).all()
-          print('Genuine records:',len(d))
+          assert 490 <= len(m) <= 510, 'Membership incomplete or malformed'
+          assert len(d)==d.ticker.nunique()
+          assert set(d.ticker).issubset(set(m.ticker))
+          assert 'TSM' not in set(d.ticker)
+          assert d.total_assets.gt(0).all()
+          print(f'Coverage: {len(d)} / {len(m)}. Missing: {len(m)-len(d)}')
           PY
-      - name: Save collection progress to GitHub
+      - name: Commit audited results and retry on concurrent updates
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add universe.csv collection_state.json
-          if test -f candidate_quotes.json; then git add candidate_quotes.json; fi
+          git add universe.csv sp500_constituents.csv data_quality.csv collection_state.json
           if ! git diff --cached --quiet; then
-            git commit -m "Update Yahoo-sourced company fundamentals [skip ci]"
-            # A newer UI/code commit may arrive during the multi-minute data pull.
-            # Rebase the collector's new CSV/state commit onto the current main
-            # instead of failing with a non-fast-forward push.
+            git commit -m "Update S&P 500 Yahoo financial data [skip ci]"
             for attempt in 1 2 3 4 5; do
               git fetch origin main
               git rebase origin/main
               if git push origin HEAD:main; then exit 0; fi
-              sleep 4
+              sleep 5
             done
-            echo "Failed to publish the batch after five push attempts."
+            echo "Could not push collector changes after five attempts"
             exit 1
           fi
-      - name: Report Yahoo collection failure
-        if: steps.fetch.outcome == 'failure'
-        run: exit 1
