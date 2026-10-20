@@ -47,7 +47,17 @@ jobs:
           if test -f candidate_quotes.json; then git add candidate_quotes.json; fi
           if ! git diff --cached --quiet; then
             git commit -m "Update Yahoo-sourced company fundamentals [skip ci]"
-            git push origin main
+            # A newer UI/code commit may arrive during the multi-minute data pull.
+            # Rebase the collector's new CSV/state commit onto the current main
+            # instead of failing with a non-fast-forward push.
+            for attempt in 1 2 3 4 5; do
+              git fetch origin main
+              git rebase origin/main
+              if git push origin HEAD:main; then exit 0; fi
+              sleep 4
+            done
+            echo "Failed to publish the batch after five push attempts."
+            exit 1
           fi
       - name: Report Yahoo collection failure
         if: steps.fetch.outcome == 'failure'
