@@ -1,0 +1,11 @@
+{
+  "cursor": 91,
+  "attempted": 90,
+  "failures": 11,
+  "verified": 79,
+  "updated_at": "2026-10-20T19:14:53+00:00",
+  "accepted_last_batch": 79,
+  "failures_last_batch": 11,
+  "status": "collecting",
+  "last_error": ""
+}
