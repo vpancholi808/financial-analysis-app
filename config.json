@@ -1,4 +1,5 @@
 {
   "excluded_tickers": [],
-  "instructions": "Add the excluded 60-second pitch ticker here before the completed university submission."
+  "required_before_submission": "Exclude the university 60-second pitch stock; confirm SNOA, Beneish PMAN and Altman Z formulas with ACCT 3343 notes."
 }
+

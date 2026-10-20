@@ -1,9 +1,10 @@
-"""ACCT 3343 equity screening models.
+"""Auditable Phase-1 course ratios and independent BUY/SELL screening rules.
 
-Verified course methods (phase 1): GPA, B/M and STA.
-SNOA, Beneish PMAN, and Altman Z must be checked against course notes
-before they are implemented. All demo records are synthetic.
+SNOA, Beneish PMAN and Altman Z are deliberately NOT coded until the
+course-specific model definitions have been supplied and verified.
 """
+from __future__ import annotations
+
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
@@ -14,138 +15,174 @@ GICS_SECTORS = [
     "Energy", "Materials", "Utilities", "Real Estate",
     "Communication Services",
 ]
-INCOMPATIBLE = {"Financials", "Real Estate"}
-BASE_FIELDS = [
-    "ticker", "name", "sector", "industry", "exchange",
-    "market_cap", "market_currency", "financial_currency",
-    "price_asof", "fiscal_year_end", "data_source", "refreshed_at",
-    "revenue", "cost_of_revenue", "gross_profit_reported",
-    "net_income", "operating_cash_flow", "total_assets", "common_equity",
-]
-FINANCIAL_FIELDS = [
-    "market_cap", "revenue", "cost_of_revenue", "gross_profit_reported",
-    "net_income", "operating_cash_flow", "total_assets", "common_equity",
-]
 
-def safe_divide(numerator, denominator):
-    """Missing/nonfinite values stay missing, denominator must be positive."""
+# These industries require an alternative/verified course treatment for the
+# *industrial-company* accounting screen. They remain visible in the universe.
+INDUSTRIAL_INCOMPATIBLE = {"Financials", "Real Estate"}
+
+METADATA_COLUMNS = [
+    "ticker", "name", "sector", "industry", "exchange", "market_cap",
+    "market_currency", "financial_currency", "price_asof", "fiscal_year_end",
+    "prior_fiscal_year_end", "refreshed_at", "data_source",
+]
+RAW_COLUMNS = [
+    "revenue", "cost_of_revenue", "gross_profit_reported", "net_income",
+    "operating_cash_flow", "total_assets", "common_equity",
+    "current_assets", "current_liabilities", "total_liabilities",
+    "retained_earnings", "ebit", "cash_and_equivalents",
+    "accounts_receivable", "net_ppe", "depreciation", "sga",
+    "total_debt", "prior_revenue", "prior_cost_of_revenue",
+    "prior_net_income", "prior_operating_cash_flow", "prior_total_assets",
+    "prior_current_assets", "prior_current_liabilities",
+    "prior_total_liabilities", "prior_common_equity", "prior_receivables",
+    "prior_net_ppe", "prior_depreciation", "prior_sga", "prior_total_debt",
+]
+UNIVERSE_COLUMNS = METADATA_COLUMNS + RAW_COLUMNS
+
+
+def safe_ratio(numerator: pd.Series, denominator: pd.Series) -> pd.Series:
+    """Validates finite numerator and strictly positive denominator."""
     n = pd.to_numeric(numerator, errors="coerce")
-    d = pd.to_numeric(denominator, errors="coerce").where(lambda x: x > 0)
-    result = n / d
-    return result.where(np.isfinite(result))
+    d = pd.to_numeric(denominator, errors="coerce")
+    v = n.div(d.where(d > 0))
+    return v.where(np.isfinite(v))
 
-def prepare(data, min_sector_n=10, min_industry_n=10):
-    """Calculate auditable raw ratios and full-universe peer benchmarks."""
-    d = data.copy()
-    for field in BASE_FIELDS:
-        if field not in d:
-            d[field] = np.nan
-    for field in FINANCIAL_FIELDS:
-        d[field] = pd.to_numeric(d[field], errors="coerce")
-    for field in ["ticker", "name", "sector", "industry",
-                  "financial_currency", "market_currency"]:
-        d[field] = d[field].fillna("").astype(str).str.strip()
-    d["ticker"] = d["ticker"].str.upper()
-    d = d.loc[d["ticker"].ne("")].drop_duplicates("ticker").reset_index(drop=True)
-    d["industrial_applicable"] = ~d["sector"].isin(INCOMPATIBLE)
-    d["currency_matches"] = (
-        d["market_currency"].ne("") & d["financial_currency"].ne("")
-        & d["market_currency"].str.upper().eq(d["financial_currency"].str.upper())
+
+def prepare(df: pd.DataFrame, min_sector_n: int = 10,
+            min_industry_n: int = 10) -> pd.DataFrame:
+    """Calculate only validated Phase-1 ratios; retain missing values as NaN."""
+    data = df.copy()
+    for col in UNIVERSE_COLUMNS:
+        if col not in data.columns:
+            data[col] = np.nan
+    for col in RAW_COLUMNS + ["market_cap"]:
+        data[col] = pd.to_numeric(data[col], errors="coerce")
+    for col in ["ticker", "name", "sector", "industry", "market_currency", "financial_currency"]:
+        data[col] = data[col].fillna("").astype(str).str.strip()
+    data["ticker"] = data["ticker"].str.upper()
+    data = data.loc[data["ticker"].ne("")].drop_duplicates(subset="ticker").reset_index(drop=True)
+
+    # Sector restrictions do NOT remove these stocks from the source universe.
+    data["industrial_applicable"] = ~data["sector"].isin(INDUSTRIAL_INCOMPATIBLE)
+    data["has_matching_currency"] = (
+        data["market_currency"].ne("")
+        & data["financial_currency"].ne("")
+        & data["market_currency"].str.upper().eq(data["financial_currency"].str.upper())
     )
-    provided = d["revenue"].notna() & d["cost_of_revenue"].notna()
-    d["gross_profit"] = (d["revenue"] - d["cost_of_revenue"]).where(
-        provided, d["gross_profit_reported"]
+    # Prefer raw Revenue - Cost of Revenue; if both are absent, an independently
+    # reported Gross Profit may be used, visibly marked in 'gross_profit_basis'.
+    computed_gp = data["revenue"] - data["cost_of_revenue"]
+    valid_components = data["revenue"].notna() & data["cost_of_revenue"].notna()
+    data["gross_profit"] = computed_gp.where(valid_components, data["gross_profit_reported"])
+    data["gross_profit_basis"] = np.select(
+        [valid_components, data["gross_profit_reported"].notna()],
+        ["Revenue - COGS", "Reported gross profit"], default="Unavailable"
     )
-    d["gross_profit_basis"] = np.where(
-        provided, "Revenue minus cost of revenue",
-        np.where(d["gross_profit_reported"].notna(), "Reported gross profit", "Missing")
-    )
-    d["GPA"] = safe_divide(d["gross_profit"], d["total_assets"])
-    d["BM"] = safe_divide(d["common_equity"], d["market_cap"])
-    d.loc[(d["common_equity"] <= 0) | ~d["currency_matches"], "BM"] = np.nan
-    d["STA"] = safe_divide(
-        d["net_income"] - d["operating_cash_flow"], d["total_assets"]
-    )
-    d["ROA"] = safe_divide(d["net_income"], d["total_assets"])
-    d["CFOA"] = safe_divide(d["operating_cash_flow"], d["total_assets"])
+    ta = data["total_assets"]
+    data["GPA"] = safe_ratio(data["gross_profit"], ta)
+    data["BM"] = safe_ratio(data["common_equity"], data["market_cap"])
+    # Negative book equity is not a meaningful 'cheap value' score.
+    data.loc[(data["common_equity"] <= 0) | ~data["has_matching_currency"], "BM"] = np.nan
+    data["STA"] = safe_ratio(data["net_income"] - data["operating_cash_flow"], ta)
+    data["ROA"] = safe_ratio(data["net_income"], ta)
+    data["CFOA"] = safe_ratio(data["operating_cash_flow"], ta)
+
+    # The benchmark is built from the WHOLE eligible universe, not the dashboard
+    # post-filter subset, avoiding look-ahead to user-selected filtering rules.
     for metric in ["GPA", "BM", "STA", "ROA", "CFOA"]:
-        valid = d["industrial_applicable"] & d[metric].notna()
-        d[metric + "_sector_pct"] = np.nan
-        d[metric + "_sector_median"] = np.nan
-        d[metric + "_sector_mean"] = np.nan
-        d[metric + "_sector_count"] = np.nan
-        d[metric + "_industry_pct"] = np.nan
-        d[metric + "_industry_count"] = np.nan
-        if not valid.any():
-            continue
-        peers = d.loc[valid, ["sector", "industry", metric]]
-        sector = peers.groupby("sector")[metric]
-        industry = peers.groupby(["sector", "industry"])[metric]
-        sc = sector.transform("count")
-        ic = industry.transform("count")
-        d.loc[valid, metric + "_sector_count"] = sc
-        d.loc[valid, metric + "_sector_median"] = sector.transform("median")
-        d.loc[valid, metric + "_sector_mean"] = sector.transform("mean")
-        d.loc[valid, metric + "_industry_count"] = ic
-        d.loc[valid, metric + "_sector_pct"] = (
-            sector.rank(pct=True).mul(100).where(sc >= min_sector_n)
-        )
-        d.loc[valid, metric + "_industry_pct"] = (
-            industry.rank(pct=True).mul(100).where(ic >= min_industry_n)
-        )
-    return d
+        eligible = data["industrial_applicable"] & data[metric].notna()
+        tmp = data.loc[eligible, ["sector", "industry", metric]]
+        s_grp = tmp.groupby("sector")[metric]
+        i_grp = tmp.groupby(["sector", "industry"])[metric]
+        data[metric + "_sector_count"] = np.nan
+        data[metric + "_sector_median"] = np.nan
+        data[metric + "_sector_mean"] = np.nan
+        data[metric + "_sector_pct"] = np.nan
+        data[metric + "_industry_count"] = np.nan
+        data[metric + "_industry_pct"] = np.nan
+        if not tmp.empty:
+            s_count = s_grp.transform("count")
+            i_count = i_grp.transform("count")
+            data.loc[eligible, metric + "_sector_count"] = s_count
+            data.loc[eligible, metric + "_sector_median"] = s_grp.transform("median")
+            data.loc[eligible, metric + "_sector_mean"] = s_grp.transform("mean")
+            data.loc[eligible, metric + "_industry_count"] = i_count
+            # Assign via original indices, guarding peer sample size.
+            s_pct = s_grp.rank(pct=True) * 100
+            i_pct = i_grp.rank(pct=True) * 100
+            data.loc[s_pct.index, metric + "_sector_pct"] = s_pct.where(s_count >= min_sector_n)
+            data.loc[i_pct.index, metric + "_industry_pct"] = i_pct.where(i_count >= min_industry_n)
+    return data
+
 
 @dataclass(frozen=True)
 class ScreenSettings:
-    min_gpa_pct: float = 60
-    min_bm_pct: float = 60
-    min_buy_score: float = 65
-    gpa_weight: float = 0.60
-    min_sta_pct: float = 80
-    min_sta_raw: float = 0.0
+    buy_gpa_pct: float = 60.0
+    buy_bm_pct: float = 60.0
+    buy_score_min: float = 65.0
+    buy_gpa_weight: float = 0.60
+    sell_sta_pct: float = 80.0
+    sell_sta_floor: float = 0.0
+    sell_min_flags: int = 1
 
-def classify(d, settings):
-    """Independent BUY (profitability/value) and SELL (earnings quality)."""
-    result = d.copy()
-    w = settings.gpa_weight
-    result["BUY_score"] = (
-        result["GPA_sector_pct"] * w + result["BM_sector_pct"] * (1 - w)
-    )
-    result["BUY_candidate"] = (
-        result["industrial_applicable"]
-        & result["GPA_sector_pct"].ge(settings.min_gpa_pct)
-        & result["BM_sector_pct"].ge(settings.min_bm_pct)
-        & result["BUY_score"].ge(settings.min_buy_score)
-    )
-    result["STA_risk_flag"] = (
-        result["industrial_applicable"]
-        & result["STA"].gt(settings.min_sta_raw)
-        & result["STA_sector_pct"].ge(settings.min_sta_pct)
-    )
-    result["SELL_flag_count"] = result["STA_risk_flag"].astype(int)
-    result["SELL_candidate"] = result["STA_risk_flag"]
-    result["conflicting_signals"] = (
-        result["BUY_candidate"] & result["SELL_candidate"]
-    )
-    return result
 
-def filter_universe(df, sectors=None, industry=None, min_cap=0, exclude=None):
-    d = df
+def classify(prepared: pd.DataFrame, settings: ScreenSettings) -> pd.DataFrame:
+    """Separate signals; no inverse-BUY rule is ever used for SELL."""
+    if not 0 <= settings.buy_gpa_weight <= 1:
+        raise ValueError("BUY GPA weight must be 0..1")
+    if settings.sell_min_flags < 1:
+        raise ValueError("SELL minimum flags must be >= 1")
+    d = prepared.copy()
+    w = settings.buy_gpa_weight
+    d["BUY_score"] = w * d["GPA_sector_pct"] + (1.0 - w) * d["BM_sector_pct"]
+    d["BUY_candidate"] = (
+        d["industrial_applicable"]
+        & d["GPA_sector_pct"].ge(settings.buy_gpa_pct)
+        & d["BM_sector_pct"].ge(settings.buy_bm_pct)
+        & d["BUY_score"].ge(settings.buy_score_min)
+    )
+    d["STA_risk_flag"] = (
+        d["industrial_applicable"]
+        & d["STA"].gt(settings.sell_sta_floor)
+        & d["STA_sector_pct"].ge(settings.sell_sta_pct)
+    )
+    # Only ONE course-verified SELL flag implemented until course-specific
+    # SNOA, Beneish PMAN and Altman Z definitions are provided.
+    d["SELL_flag_count"] = d["STA_risk_flag"].astype(int)
+    d["SELL_candidate"] = d["SELL_flag_count"].ge(settings.sell_min_flags)
+    d["conflicting_signals"] = d["BUY_candidate"] & d["SELL_candidate"]
+    return d
+
+
+def scope_filter(prepared: pd.DataFrame, sectors: list[str] | None = None,
+                 industry: str = "All industries", min_cap: float = 0,
+                 excluded_tickers: set[str] | None = None) -> pd.DataFrame:
+    """Apply UI filters AFTER universe-relative percentiles are established."""
+    d = prepared
     if sectors is not None:
         d = d.loc[d["sector"].isin(sectors)]
-    if industry and industry != "All industries":
+    if industry != "All industries":
         d = d.loc[d["industry"].eq(industry)]
-    d = d.loc[d["market_cap"].ge(min_cap)]
-    if exclude:
-        d = d.loc[~d["ticker"].isin({t.strip().upper() for t in exclude})]
+    if min_cap > 0:
+        d = d.loc[d["market_cap"].ge(min_cap)]
+    if excluded_tickers:
+        excluded = {str(t).strip().upper() for t in excluded_tickers}
+        d = d.loc[~d["ticker"].isin(excluded)]
     return d.copy()
 
-def integrity_report(df):
+
+def validate_universe(df: pd.DataFrame) -> dict:
+    """Human-readable data integrity report for dashboard and tests."""
+    if df.empty:
+        return {"rows": 0, "duplicate_tickers": 0, "invalid_sector_rows": 0,
+                "unmatched_currency_rows": 0, "usable_gpa": 0, "usable_bm": 0,
+                "usable_sta": 0}
     return {
-        "companies": int(len(df)),
-        "invalid_sector": int((~df["sector"].isin(GICS_SECTORS)).sum()),
-        "currency_mismatch_or_missing": int((~df["currency_matches"]).sum()),
-        "GPA_available": int(df["GPA"].notna().sum()),
-        "BM_available": int(df["BM"].notna().sum()),
-        "STA_available": int(df["STA"].notna().sum()),
+        "rows": int(len(df)),
+        "duplicate_tickers": int(df["ticker"].duplicated().sum()),
+        "invalid_sector_rows": int((~df["sector"].isin(GICS_SECTORS)).sum()),
+        "unmatched_currency_rows": int((~df["has_matching_currency"]).sum()),
+        "usable_gpa": int(df["GPA"].notna().sum()),
+        "usable_bm": int(df["BM"].notna().sum()),
+        "usable_sta": int(df["STA"].notna().sum()),
     }
