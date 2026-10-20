@@ -1,5 +1,7 @@
 {
-  "excluded_tickers": [],
-  "required_before_submission": "Exclude the university 60-second pitch stock; confirm SNOA, Beneish PMAN and Altman Z formulas with ACCT 3343 notes."
+  "excluded_tickers": [
+    "TSM"
+  ],
+  "required_before_submission": "Exclude the university 60-second pitch stock; confirm SNOA, Beneish PMAN and Altman Z formulas with ACCT 3343 notes.",
+  "pitch_company": "Taiwan Semiconductor Manufacturing Company (TSMC), US-listed ADR ticker TSM"
 }
-
