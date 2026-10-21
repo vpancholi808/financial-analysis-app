@@ -53,6 +53,10 @@ FIELD_ALIASES = {
     "depreciation": ["Depreciation And Amortization In Cash Flow", "Depreciation Amortization Depletion"],
     "sga": ["Selling General And Administration"],
     "total_debt": ["Total Debt"],
+    "short_term_debt": ["Current Debt", "Current Debt And Capital Lease Obligation"],
+    "long_term_debt": ["Long Term Debt", "Long Term Debt And Capital Lease Obligation"],
+    "minority_interest": ["Minority Interest", "Minority Interest In Consolidated Entity"],
+    "preferred_equity": ["Preferred Stock Equity"],
 }
 INCOME = {"revenue", "cost_of_revenue", "gross_profit_reported", "net_income", "ebit", "sga"}
 CASHFLOW = {"operating_cash_flow", "depreciation"}
