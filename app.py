@@ -60,9 +60,10 @@ def cached_audit(raw_df,members_df):
     """Same audit_table output, cached so slider moves do not re-run the full audit."""
     return audit_table(raw_df,members_df)
 
-SNOA_NOTE=("Net operating assets (SNOA) needs cash, short- and long-term debt, minority interest, preferred and "
-           "common equity; most companies lack at least one of these in the source data, so it shows as — "
-           "(never treated as zero) and its risk check is n/a.")
+SNOA_NOTE=("Net operating assets (SNOA) needs total assets, cash and total liabilities. When Yahoo omits the "
+           "minority-interest or preferred-equity line, their combined value is taken from the balance sheet "
+           "(assets − liabilities − common equity), which gives the identical course formula. A debt line Yahoo does "
+           "not report is left out of the formula and the value is labelled \"partial inputs\".")
 
 def altman_short(model):
     m=str(model)
@@ -125,7 +126,9 @@ def selection_actions(event,data,key):
 def tone_counts_line(items):
     flagged=sum(i["tone"]==BAD for i in items);na=sum(i["tone"]==NA for i in items)
     available=len(items)-na
+    review=sum(i["tone"]==CAUTION for i in items)
     s=f"**{flagged} of {available}** available checks flagged"
+    s+=f" · {review} for review (not counted)" if review else ""
     return s+(f" · {na} not available (missing inputs)" if na else "")
 
 # ------------------------------------------------------------------ data
@@ -178,8 +181,8 @@ with st.sidebar:
         beneish=st.number_input("Beneish M-score cutoff",value=-1.78,step=.01,
                                 help="M-scores above this value are flagged. −1.78 is the published default.")
         riskcount=st.slider("Checks needed to be risk-flagged",1,4,2,
-                            help="How many of the 4 accounting-risk checks must trigger. Only checks with complete inputs can fire — "
-                                 "SNOA is rarely available, so for most companies at most 3 can trigger.")
+                            help="How many of the 4 accounting-risk checks must trigger. Only checks with complete inputs can fire. "
+                                 "Beneish index outliers and Altman results for negative-equity firms are shown for review and never count.")
     st.caption(f"Dataset: {len(base)} of {len(members)} S&P 500 listings · market caps as of {asof}")
     with st.expander("Sources and methodology"):
         st.write("Annual company statements are matched by fiscal year. Market cap is a more recent quote snapshot; ratios are cross-sectional, not point-in-time backtests.")
@@ -261,6 +264,8 @@ if page=="S&P 500 Screener":
              f"**{len(shorts)}** trip at least {riskcount} of 4 accounting-risk checks")
     summary+=f"; {n_conf} show both signals." if n_conf else "."
     if n_spec:summary+=f" {n_spec} banks, insurers and REITs are listed but not scored."
+    n_stale=int((view.industrial_applicable & view.stale_statements).sum())
+    if n_stale:summary+=f" {n_stale} with statements older than about 15 months {'is' if n_stale==1 else 'are'} not scored until the data refreshes."
     st.markdown(summary)
     a,b,c,d=st.columns(4)
     a.metric("Companies in view",f"{len(view):,}",border=True,
@@ -394,6 +399,8 @@ elif page=="Company Profile":
     st.title(f"{r['name']} ({ticker})")
     status,tone=screen_status(r)
     z_label,z_tone=altman_status(r.Altman_zone)
+    if bool(r.get("stale_statements",False)) and bool(r.industrial_applicable):
+        z_label,z_tone="– not scored (stale data)",NA
     st.markdown(f"{badge(status,tone)} &nbsp; {badge('Altman: '+z_label,z_tone)} &nbsp; "
                 f"{badge('FY ending '+str(r.fiscal_year_end),NA)}")
     rev_g=change(n(r,"revenue"),n(r,"prior_revenue"))
@@ -409,10 +416,17 @@ elif page=="Company Profile":
     st.subheader("Scorecard versus sector peers")
     if not bool(r.industrial_applicable):
         st.info("Banks, insurers and REITs need specialist models: sector ranks, grades and accounting-risk checks are not assigned. Company ratios are still shown.")
+    elif bool(r.get("stale_statements",False)):
+        st.warning(f"The latest annual statements (FY ending {r.fiscal_year_end}) are {int(r.statement_age_days)} days older than the market-cap quote, "
+                   "so this company is not ranked or screened until its data refreshes. Company ratios are still shown.")
+    if str(r.get("share_class_of","")):
+        st.caption(f"Share class of {r.share_class_of}: the issuer is counted once in sector benchmarks.")
     rows=[]
     for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M"]:
         m=METRICS[key];p=n(r,key+"_sector_pct")
         g,_=grade_from_percentile(p,m.higher_is_better)
+        if key=="Beneish_M" and bool(r.get("Beneish_outlier",False)):
+            g="● Review"
         rows.append({"Metric":m.label,"Company":fmt_metric(key,n(r,key)),
                      "Sector median":fmt_metric(key,n(r,key+"_sector_median")),
                      "Standing":standing(p,m.higher_is_better),"Grade":g,
@@ -422,7 +436,7 @@ elif page=="Company Profile":
     z_txt=fmt_number(n(r,"Altman_Z"))
     if np.isfinite(n(r,"Altman_Z")):z_txt+=" (Z)" if str(r.Altman_model).startswith("Original") else " (Z″)"
     rows.append({"Metric":METRICS["Altman_Z"].label,"Company":z_txt,"Sector median":MISSING,
-                 "Standing":np.nan,"Grade":altman_status(r.Altman_zone)[0],"Better when":"↑ Higher",
+                 "Standing":np.nan,"Grade":altman_status(r.Altman_zone)[0].split(":")[0],"Better when":"↑ Higher",
                  "Raw percentile":"zone-based"})
     card=pd.DataFrame(rows)
     st.dataframe(styled(card,["Grade"]),hide_index=True,width="stretch",placeholder=MISSING,
@@ -436,6 +450,8 @@ elif page=="Company Profile":
     st.caption(f"Grades for accruals, net operating assets and the M-score are inverted so ▲ Strong always means favourable "
                f"(lower raw value than peers). Beneish screen cutoff: {beneish:.2f}. — = not available.")
     if pd.isna(r.SNOA):st.caption(SNOA_NOTE)
+    elif str(r.get("SNOA_basis","")).startswith("Partial"):
+        st.caption(f"Net operating assets (SNOA) uses partial inputs: {str(r.SNOA_basis).split(': ',1)[1]}.")
     with st.expander("What do these metrics mean?"):
         for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M","Altman_Z"]:
             m=METRICS[key];st.markdown(f"**{m.label}** — {m.help} *{m.direction}.*")
@@ -595,13 +611,23 @@ elif page=="Research Desk":
 
     st.subheader("Finish the investment case")
     st.caption("A defensible final recommendation needs the analyst's specific thesis, catalyst, opposing argument and an actual filing reference.")
+    # Drafts are stored per company, so text written for one ticker can never
+    # appear in (or be exported with) another company's working paper.
+    drafts=st.session_state.setdefault("research_drafts",{}).setdefault(ticker,{})
+    positions=["Under review","Long","Short / avoid","No position"]
+    def draft_field(widget,field,label,**kw):
+        v=widget(label,value=drafts.get(field,""),key=f"rd_{field}_{ticker}",**kw)
+        drafts[field]=v
+        return v
     with st.container(border=True):
-        position=st.selectbox("Your position",["Under review","Long","Short / avoid","No position"])
-        thesis=st.text_area("Investment thesis: why is the market mispricing this company?",height=95)
-        catalyst=st.text_input("Catalyst and expected timing")
-        counter=st.text_area("Strongest counterargument",height=75)
-        invalid=st.text_input("What evidence would invalidate the thesis?")
-        filing=st.text_input("SEC filing or issuer annual-report URL")
+        pos_default=positions.index(drafts["position"]) if drafts.get("position") in positions else 0
+        position=st.selectbox("Your position",positions,index=pos_default,key=f"rd_position_{ticker}")
+        drafts["position"]=position
+        thesis=draft_field(st.text_area,"thesis","Investment thesis: why is the market mispricing this company?",height=95)
+        catalyst=draft_field(st.text_input,"catalyst","Catalyst and expected timing")
+        counter=draft_field(st.text_area,"counter","Strongest counterargument",height=75)
+        invalid=draft_field(st.text_input,"invalid","What evidence would invalidate the thesis?")
+        filing=draft_field(st.text_input,"filing","SEC filing or issuer annual-report URL")
     sections=dict(position=position,thesis=thesis,catalyst=catalyst,
                   counterargument=counter,invalidation=invalid,filing_reference=filing)
     require=[thesis.strip(),catalyst.strip(),counter.strip(),invalid.strip(),filing.strip()]
@@ -646,6 +672,11 @@ else:
   where long score = {w:.2f} × profitability rank + {1-w:.2f} × value rank.
 - **Risk-flagged**: at least {riskcount} of 4 independent checks trigger — accruals positive and ≥ {sta}th sector percentile;
   net operating assets ≥ {snoa}th percentile; Beneish M-score above {beneish:.2f}; Altman distress zone.
+- **Review, not a flag** (● Review): a Beneish score driven by an extreme index (one of the eight indices outside its plausible
+  band, usually a near-zero prior-year figure), or an Altman Z″ score for a company with negative book equity. Altman is not
+  applied to regulated utilities, and the manufacturer model (Z) is chosen from an explicit list of GICS sub-industries.
+- **Not scored**: banks, insurers and REITs (specialist models needed) and companies whose latest statements are more than
+  about 15 months older than the market-cap quote. Dual share classes (e.g. GOOG/GOOGL) count once in sector benchmarks.
 - **Mixed signals**: a company passing both screens; resolve qualitatively.
 - A screen result is a starting point for research. It is **not** a recommendation to buy or sell.""")
     with t3:

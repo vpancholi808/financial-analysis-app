@@ -8,7 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
-from advanced_models import compute_advanced
+from advanced_models import compute_advanced, ADVANCED_COLUMNS
 
 GICS_SECTORS = [
     "Information Technology", "Health Care", "Financials",
@@ -20,6 +20,10 @@ GICS_SECTORS = [
 # These industries require an alternative/verified course treatment for the
 # *industrial-company* accounting screen. They remain visible in the universe.
 INDUSTRIAL_INCOMPATIBLE = {"Financials", "Real Estate"}
+
+# Annual statements older than this (fiscal year-end to quote date) are too far
+# from the market-cap snapshot to rank against peers: roughly 15 months.
+STALE_STATEMENT_DAYS = 456
 
 METADATA_COLUMNS = [
     "ticker", "name", "sector", "industry", "exchange", "market_cap",
@@ -90,14 +94,45 @@ def prepare(df: pd.DataFrame, min_sector_n: int = 10,
     data["STA"] = safe_ratio(data["net_income"] - data["operating_cash_flow"], ta)
     data["ROA"] = safe_ratio(data["net_income"], ta)
     data["CFOA"] = safe_ratio(data["operating_cash_flow"], ta)
-    advanced = data.apply(compute_advanced,axis=1)
+    if len(data):
+        advanced = data.apply(compute_advanced, axis=1)
+    else:
+        advanced = pd.DataFrame(columns=ADVANCED_COLUMNS, index=data.index)
     for col in advanced.columns:
         data[col] = advanced[col]
+
+    # Statement age versus the market-cap quote date. Stale rows (e.g. a merged
+    # company whose statements belong to its predecessor) stay visible but are
+    # not ranked or screened, because B/M and percentiles would mix periods.
+    fye = pd.to_datetime(data["fiscal_year_end"], errors="coerce")
+    quote = pd.to_datetime(data["price_asof"], errors="coerce")
+    data["statement_age_days"] = (quote - fye).dt.days
+    data["stale_statements"] = data["statement_age_days"].gt(STALE_STATEMENT_DAYS)
+
+    # Dual share classes (GOOG/GOOGL, FOX/FOXA, NWS/NWSA) share one set of
+    # statements; the issuer counts once in sector benchmarks.
+    # Same issuer name AND byte-identical statements; distinct companies never match.
+    issuer = data["name"].str.lower() + "|" + data["fiscal_year_end"].astype(str)
+    for col in RAW_COLUMNS:
+        issuer = issuer + "|" + data[col].astype(str)
+    primary_idx = data.groupby(issuer, sort=False).head(1).index
+    data["issuer_primary"] = data.index.isin(primary_idx)
+    primary_ticker = data.loc[primary_idx].set_index(issuer.loc[primary_idx])["ticker"]
+    data["share_class_of"] = np.where(data["issuer_primary"], "", issuer.map(primary_ticker).fillna(""))
+
+    data["scoreable"] = data["industrial_applicable"] & ~data["stale_statements"]
+    data["exclusion_reason"] = np.select(
+        [~data["industrial_applicable"], data["stale_statements"]],
+        ["Specialist sector (bank, insurer or REIT)",
+         "Stale statements (older than about 15 months at the quote date)"], default="")
 
     # The benchmark is built from the WHOLE eligible universe, not the dashboard
     # post-filter subset, avoiding look-ahead to user-selected filtering rules.
     for metric in ["GPA", "BM", "STA", "ROA", "CFOA", "SNOA", "Beneish_M"]:
-        eligible = data["industrial_applicable"] & data[metric].notna()
+        eligible = data["scoreable"] & data["issuer_primary"] & data[metric].notna()
+        if metric == "Beneish_M":
+            # Index outliers would dominate the sector ranking; they are review items.
+            eligible &= ~data["Beneish_outlier"].fillna(False).astype(bool)
         tmp = data.loc[eligible, ["sector", "industry", metric]]
         s_grp = tmp.groupby("sector")[metric]
         i_grp = tmp.groupby(["sector", "industry"])[metric]
@@ -119,6 +154,16 @@ def prepare(df: pd.DataFrame, min_sector_n: int = 10,
             i_pct = i_grp.rank(pct=True) * 100
             data.loc[s_pct.index, metric + "_sector_pct"] = s_pct.where(s_count >= min_sector_n)
             data.loc[i_pct.index, metric + "_industry_pct"] = i_pct.where(i_count >= min_industry_n)
+        # A secondary share class takes the benchmark result of its primary listing.
+        secondary = data["scoreable"] & ~data["issuer_primary"] & data[metric].notna()
+        if metric == "Beneish_M":
+            secondary &= ~data["Beneish_outlier"].fillna(False).astype(bool)
+        if secondary.any():
+            by_ticker = data.set_index("ticker")
+            src = data.loc[secondary, "share_class_of"]
+            for suffix in ["_sector_count", "_sector_median", "_sector_mean", "_sector_pct",
+                           "_industry_count", "_industry_pct"]:
+                data.loc[secondary, metric + suffix] = src.map(by_ticker[metric + suffix]).values
     return data
 
 
@@ -144,27 +189,32 @@ def classify(prepared: pd.DataFrame, settings: ScreenSettings) -> pd.DataFrame:
     d = prepared.copy()
     w = settings.buy_gpa_weight
     d["BUY_score"] = w * d["GPA_sector_pct"] + (1.0 - w) * d["BM_sector_pct"]
+    scoreable = d["scoreable"] if "scoreable" in d else d["industrial_applicable"]
     d["BUY_candidate"] = (
-        d["industrial_applicable"]
+        scoreable
         & d["GPA_sector_pct"].ge(settings.buy_gpa_pct)
         & d["BM_sector_pct"].ge(settings.buy_bm_pct)
         & d["BUY_score"].ge(settings.buy_score_min)
     )
     d["STA_risk_flag"] = (
-        d["industrial_applicable"]
+        scoreable
         & d["STA"].gt(settings.sell_sta_floor)
         & d["STA_sector_pct"].ge(settings.sell_sta_pct)
     )
     d["SNOA_risk_flag"] = (
-        d["industrial_applicable"]
+        scoreable
         & d["SNOA_sector_pct"].ge(settings.sell_snoa_pct)
     )
+    # Index outliers (near-zero prior-year denominators) are reported for
+    # review but never counted as a manipulation signal.
+    outlier = d["Beneish_outlier"].fillna(False).astype(bool) if "Beneish_outlier" in d else False
     d["Beneish_risk_flag"] = (
-        d["industrial_applicable"]
+        scoreable
         & d["Beneish_M"].gt(settings.sell_beneish_cutoff)
+        & ~outlier
     )
     d["Altman_risk_flag"] = (
-        d["industrial_applicable"] & d["Altman_zone"].eq("Distress")
+        scoreable & d["Altman_zone"].eq("Distress")
     )
     d["SELL_flag_count"] = (
         d["STA_risk_flag"].astype(int) + d["SNOA_risk_flag"].astype(int)

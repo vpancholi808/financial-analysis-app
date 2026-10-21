@@ -68,7 +68,7 @@ def evidence(row):
         else:
             good.append(f"Scaled net operating assets {metric(r['SNOA'],True)} with complete operating-asset and liability inputs.")
     else:
-        gaps.append('SNOA unavailable: require short/long debt, cash, minority interest, preferred equity, common equity and assets; absent values are not assumed zero.')
+        gaps.append('SNOA unavailable: requires assets, cash, short/long debt and total liabilities (or the explicit minority-interest, preferred and common equity lines); absent values are not assumed zero.')
     if pd.notna(r.get('Beneish_M')):
         if r['Beneish_M'] > -1.78:
             risks.append(f"Beneish eight-variable M-score {metric(r['Beneish_M'])} exceeds -1.78 screening cutoff; this does NOT demonstrate fraud.")

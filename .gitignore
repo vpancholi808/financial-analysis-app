@@ -1,0 +1,5 @@
+__pycache__/
+.pytest_cache/
+metric_audit.csv
+audit_summary.json
+.claude/worktrees/
