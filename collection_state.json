@@ -1463,6 +1463,7 @@
     "ZTS": 1
   },
   "schema_refresh_pending": 0,
+  "sec_last_check": {},
   "stale_refresh_last_attempt": {
     "ACN": "2026-10-21",
     "AZO": "2026-10-21",
@@ -1477,5 +1478,5 @@
   "statement_completeness": 0.8924302788844621,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-10-21T16:31:18+00:00"
+  "updated_at": "2026-10-21T17:11:21+00:00"
 }
