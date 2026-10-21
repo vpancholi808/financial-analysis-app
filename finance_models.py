@@ -1,13 +1,14 @@
 """Auditable Phase-1 course ratios and independent BUY/SELL screening rules.
 
-SNOA, Beneish PMAN and Altman Z are deliberately NOT coded until the
-course-specific model definitions have been supplied and verified.
+GPA, B/M, STA, ROA, CFOA plus course-defined SNOA and published
+Beneish M-score and Altman variants. Missing inputs remain missing.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 import numpy as np
 import pandas as pd
+from advanced_models import compute_advanced
 
 GICS_SECTORS = [
     "Information Technology", "Health Care", "Financials",
@@ -36,6 +37,9 @@ RAW_COLUMNS = [
     "prior_current_assets", "prior_current_liabilities",
     "prior_total_liabilities", "prior_common_equity", "prior_receivables",
     "prior_net_ppe", "prior_depreciation", "prior_sga", "prior_total_debt",
+    "short_term_debt", "long_term_debt", "minority_interest", "preferred_equity",
+    "prior_short_term_debt", "prior_long_term_debt",
+    "prior_minority_interest", "prior_preferred_equity",
 ]
 UNIVERSE_COLUMNS = METADATA_COLUMNS + RAW_COLUMNS
 
@@ -86,10 +90,13 @@ def prepare(df: pd.DataFrame, min_sector_n: int = 10,
     data["STA"] = safe_ratio(data["net_income"] - data["operating_cash_flow"], ta)
     data["ROA"] = safe_ratio(data["net_income"], ta)
     data["CFOA"] = safe_ratio(data["operating_cash_flow"], ta)
+    advanced = data.apply(compute_advanced,axis=1)
+    for col in advanced.columns:
+        data[col] = advanced[col]
 
     # The benchmark is built from the WHOLE eligible universe, not the dashboard
     # post-filter subset, avoiding look-ahead to user-selected filtering rules.
-    for metric in ["GPA", "BM", "STA", "ROA", "CFOA"]:
+    for metric in ["GPA", "BM", "STA", "ROA", "CFOA", "SNOA", "Beneish_M"]:
         eligible = data["industrial_applicable"] & data[metric].notna()
         tmp = data.loc[eligible, ["sector", "industry", metric]]
         s_grp = tmp.groupby("sector")[metric]
@@ -124,6 +131,8 @@ class ScreenSettings:
     sell_sta_pct: float = 80.0
     sell_sta_floor: float = 0.0
     sell_min_flags: int = 1
+    sell_snoa_pct: float = 80.0
+    sell_beneish_cutoff: float = -1.78
 
 
 def classify(prepared: pd.DataFrame, settings: ScreenSettings) -> pd.DataFrame:
@@ -146,9 +155,21 @@ def classify(prepared: pd.DataFrame, settings: ScreenSettings) -> pd.DataFrame:
         & d["STA"].gt(settings.sell_sta_floor)
         & d["STA_sector_pct"].ge(settings.sell_sta_pct)
     )
-    # Only ONE course-verified SELL flag implemented until course-specific
-    # SNOA, Beneish PMAN and Altman Z definitions are provided.
-    d["SELL_flag_count"] = d["STA_risk_flag"].astype(int)
+    d["SNOA_risk_flag"] = (
+        d["industrial_applicable"]
+        & d["SNOA_sector_pct"].ge(settings.sell_snoa_pct)
+    )
+    d["Beneish_risk_flag"] = (
+        d["industrial_applicable"]
+        & d["Beneish_M"].gt(settings.sell_beneish_cutoff)
+    )
+    d["Altman_risk_flag"] = (
+        d["industrial_applicable"] & d["Altman_zone"].eq("Distress")
+    )
+    d["SELL_flag_count"] = (
+        d["STA_risk_flag"].astype(int) + d["SNOA_risk_flag"].astype(int)
+        + d["Beneish_risk_flag"].astype(int) + d["Altman_risk_flag"].astype(int)
+    )
     d["SELL_candidate"] = d["SELL_flag_count"].ge(settings.sell_min_flags)
     d["conflicting_signals"] = d["BUY_candidate"] & d["SELL_candidate"]
     return d
@@ -176,7 +197,8 @@ def validate_universe(df: pd.DataFrame) -> dict:
     if df.empty:
         return {"rows": 0, "duplicate_tickers": 0, "invalid_sector_rows": 0,
                 "unmatched_currency_rows": 0, "usable_gpa": 0, "usable_bm": 0,
-                "usable_sta": 0}
+                "usable_sta": 0, "usable_snoa": 0,
+                "usable_beneish": 0,"usable_altman": 0}
     return {
         "rows": int(len(df)),
         "duplicate_tickers": int(df["ticker"].duplicated().sum()),
@@ -185,4 +207,7 @@ def validate_universe(df: pd.DataFrame) -> dict:
         "usable_gpa": int(df["GPA"].notna().sum()),
         "usable_bm": int(df["BM"].notna().sum()),
         "usable_sta": int(df["STA"].notna().sum()),
+        "usable_snoa": int(df["SNOA"].notna().sum()),
+        "usable_beneish": int(df["Beneish_M"].notna().sum()),
+        "usable_altman": int(df["Altman_Z"].notna().sum()),
     }
