@@ -17,6 +17,7 @@ import pandas as pd
 import requests
 
 from build_universe import extract_company, issuer_key
+from sec_edgar import SecClient, fill_from_sec, needs_sec, TRIGGER_FIELDS
 from finance_models import GICS_SECTORS, UNIVERSE_COLUMNS
 
 ROOT = Path(__file__).resolve().parent
@@ -142,16 +143,62 @@ def due_for_statement_refresh(rows, today=None, last_attempts=None):
     return due
 
 def is_newer_statement(old_row, new_row):
-    """Accept a refreshed record only when its fiscal year-end is later."""
+    """Accept a refreshed record only when its fiscal year-end is later. Dates
+    within 15 days are the same fiscal year (Yahoo rounds to month-end, SEC
+    uses the exact 52/53-week date)."""
     old = pd.to_datetime(old_row.get("fiscal_year_end"), errors="coerce")
     new = pd.to_datetime(new_row.get("fiscal_year_end"), errors="coerce")
-    return pd.notna(new) and (pd.isna(old) or new > old)
+    return pd.notna(new) and (pd.isna(old) or (new - old).days > 15)
+
+SEC_RECHECK_DAYS = 7
+
+def sec_due(symbol, row, last_checks, today):
+    """Check SEC when a line is blank or a newer 10-K is due: at most daily
+    while a newer annual report is due, otherwise weekly per fiscal year."""
+    if not needs_sec(row, today=today):
+        return False
+    prev = str(last_checks.get(symbol, ""))
+    if "|" not in prev:
+        return True
+    when, fye = prev.split("|", 1)
+    if fye != str(row.get("fiscal_year_end")):
+        return True
+    age = (pd.Timestamp(today) - pd.Timestamp(when)).days
+    report_due = needs_sec({k: 1.0 for k in TRIGGER_FIELDS} | {"fiscal_year_end": row.get("fiscal_year_end")}, today=today)
+    return age >= (1 if report_due else SEC_RECHECK_DAYS)
+
+def sec_pass(rows, last_checks, today=None, client=None, limit=250):
+    """Fill Yahoo blanks / supply newer fiscal years from SEC 10-K data.
+    Returns a list of log lines; rows and last_checks are updated in place."""
+    today = str(pd.Timestamp(today or datetime.now(timezone.utc).date()).date())
+    due = [s for s, r in rows.items() if sec_due(s, r, last_checks, today)][:limit]
+    log = []
+    if not due:
+        return log
+    client = client or SecClient()
+    for symbol in due:
+        try:
+            facts = client.company_facts(symbol)
+        except Exception as exc:
+            log.append(f"SEC FETCH FAILED {symbol} {type(exc).__name__} {str(exc)[:120]}")
+            continue
+        if facts is None:
+            log.append(f"SEC NO CIK {symbol}")
+        else:
+            updated, filled, note = fill_from_sec(rows[symbol], facts)
+            if filled:
+                rows[symbol] = updated
+                log.append(f"SEC FILLED {symbol} {','.join(filled)} ({note})")
+            else:
+                log.append(f"SEC NOTHING TO FILL {symbol} ({note})")
+        last_checks[symbol] = f"{today}|{rows[symbol].get('fiscal_year_end')}"
+    return log
 
 def complete_fraction(df, keys=("gross_profit_reported","net_income","operating_cash_flow","total_assets","common_equity")):
     if df.empty: return 0.
     return float(df[list(keys)].notna().all(axis=1).mean())
 
-def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
+def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=True):
     import yfinance as yf
     members, source_status = load_membership(refresh=refresh_index)
     members_map = {x.ticker:x for x in members.itertuples(index=False)}
@@ -210,12 +257,20 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
         except Exception as exc:
             print("FETCH FAILED",symbol,type(exc).__name__,str(exc)[:150],flush=True)
         if pause: time.sleep(pause)
+    sec_checks = {str(k):str(v) for k,v in prior.get("sec_last_check",{}).items()}
+    if use_sec:
+        for line in sec_pass(rows, sec_checks):
+            print(line, flush=True)
     ordered = [rows[s] for s in members_map if s in rows]
     good = pd.DataFrame(ordered,columns=UNIVERSE_COLUMNS)
     good.to_csv(UNIVERSE,index=False)
     audit = []
     for r in ordered:
         audit.extend(anomaly_flags(r))
+        filled = str(r.get("sec_filled_fields") or "")
+        if filled and filled != "nan":
+            audit.append(dict(ticker=str(r.get("ticker","")), severity="info", issue="SEC_FILLED_FIELDS",
+                              detail=f"From SEC EDGAR 10-K data: {filled}"))
     for s in members_map:
         if s not in rows:
             audit.append(dict(ticker=s,severity="missing",issue="FINANCIALS_NOT_FETCHED",
@@ -228,6 +283,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
         "new_records_last_batch":new_count,"attempts":attempts,
         "schema_refresh_attempts":refresh_attempts,
         "stale_refresh_last_attempt":stale_last,
+        "sec_last_check":sec_checks,
         "schema_refresh_pending":sum(s in rows and refresh_attempts.get(s,0)==0 for s in members_map),
         "attempted_total":sum(attempts.values()),"batch_size":batch_size,
         "quality_warning_count":sum(a["severity"]=="warning" for a in audit),
@@ -239,7 +295,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
                  else "collecting",
     }
     write_state(state)
-    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts","stale_refresh_last_attempt")},indent=2),flush=True)
+    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts","stale_refresh_last_attempt","sec_last_check")},indent=2),flush=True)
     # Never fail away real records because a subset of Yahoo retrievals were incomplete.
     return state
 
@@ -249,6 +305,7 @@ if __name__=="__main__":
     cli.add_argument("--retry-cap",type=int,default=3)
     cli.add_argument("--pause",type=float,default=0.7)
     cli.add_argument("--offline-membership",action="store_true")
+    cli.add_argument("--no-sec",action="store_true",help="Skip the SEC EDGAR fill-in pass")
     x=cli.parse_args()
     if not 1<=x.batch_size<=510 or x.retry_cap<1 or x.pause<0: cli.error("Invalid collection settings")
-    collect(x.batch_size,x.retry_cap,x.pause,not x.offline_membership)
+    collect(x.batch_size,x.retry_cap,x.pause,not x.offline_membership,not x.no_sec)

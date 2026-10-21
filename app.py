@@ -522,8 +522,16 @@ elif page=="Company Profile":
         st.caption(f"Yahoo Finance figures, matched annual period. Totals may have issuer-specific definitions. "
                    f"Gross profit basis: {r.gross_profit_basis}. — = not reported, not comparable, or prior year not stored.")
     with st.expander("Source and methodology"):
-        st.caption(f"Yahoo Finance via yfinance · FY {r.fiscal_year_end} · quote snapshot {r.price_asof} · retrieved {r.refreshed_at}")
-        st.markdown(f"[Review source financial statements](https://finance.yahoo.com/quote/{ticker}/financials/)")
+        sec_fields=str(r.get("sec_filled_fields","") or "")
+        if sec_fields.startswith("all"):
+            st.caption(f"Statements from the company's latest 10-K (SEC EDGAR XBRL) · FY {r.fiscal_year_end} · market cap from Yahoo Finance, quote snapshot {r.price_asof}")
+        else:
+            st.caption(f"Yahoo Finance via yfinance · FY {r.fiscal_year_end} · quote snapshot {r.price_asof} · retrieved {r.refreshed_at}")
+            if sec_fields:
+                st.caption("Lines Yahoo left blank, filled from the same fiscal year's 10-K (SEC EDGAR): "
+                           + ", ".join(f.replace("_"," ") for f in sec_fields.split(";")))
+        st.markdown(f"[Review source financial statements](https://finance.yahoo.com/quote/{ticker}/financials/) · "
+                    f"[SEC filings](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K)")
         st.caption("Market capitalization and latest FY figures use different dates. Do not treat the derived ratios as historical backtests.")
 
 elif page=="Research Desk":

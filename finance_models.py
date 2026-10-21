@@ -28,7 +28,7 @@ STALE_STATEMENT_DAYS = 456
 METADATA_COLUMNS = [
     "ticker", "name", "sector", "industry", "exchange", "market_cap",
     "market_currency", "financial_currency", "price_asof", "fiscal_year_end",
-    "prior_fiscal_year_end", "refreshed_at", "data_source",
+    "prior_fiscal_year_end", "refreshed_at", "data_source", "sec_filled_fields",
 ]
 RAW_COLUMNS = [
     "revenue", "cost_of_revenue", "gross_profit_reported", "net_income",
@@ -65,7 +65,7 @@ def prepare(df: pd.DataFrame, min_sector_n: int = 10,
             data[col] = np.nan
     for col in RAW_COLUMNS + ["market_cap"]:
         data[col] = pd.to_numeric(data[col], errors="coerce")
-    for col in ["ticker", "name", "sector", "industry", "market_currency", "financial_currency"]:
+    for col in ["ticker", "name", "sector", "industry", "market_currency", "financial_currency", "sec_filled_fields"]:
         data[col] = data[col].fillna("").astype(str).str.strip()
     data["ticker"] = data["ticker"].str.upper()
     data = data.loc[data["ticker"].ne("")].drop_duplicates(subset="ticker").reset_index(drop=True)
