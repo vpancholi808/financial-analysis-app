@@ -141,11 +141,20 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
         attempts = {}
     else:
         attempts = {str(k):int(v) for k,v in prior.get("attempts",{}).items()}
-    pending = [s for s in members_map if s not in rows and attempts.get(s,0)<retry_cap]
-    print(f"S&P constituents: {len(members)}; already fetched: {len(rows)}; eligible for fetch: {len(pending)}", flush=True)
+    # A prior dataset predates SNOA/Beneish inputs. Re-fetch each existing
+    # issuer once for the extended schema, without discarding its old statements
+    # if Yahoo temporarily fails.
+    refresh_attempts = {str(k):int(v) for k,v in prior.get("schema_refresh_attempts",{}).items()}
+    needs_schema_refresh = [s for s in members_map if s in rows and refresh_attempts.get(s,0)==0]
+    missing_members = [s for s in members_map if s not in rows and attempts.get(s,0)<retry_cap]
+    pending = missing_members + needs_schema_refresh
+    print(f"S&P constituents: {len(members)}; fetched: {len(rows)}; missing: {len(missing_members)}; scheduled refresh: {len(needs_schema_refresh)}", flush=True)
     new_count = 0
     for symbol in pending[:batch_size]:
-        attempts[symbol] = attempts.get(symbol,0) + 1
+        if symbol in rows:
+            refresh_attempts[symbol] = refresh_attempts.get(symbol,0) + 1
+        else:
+            attempts[symbol] = attempts.get(symbol,0) + 1
         member = members_map[symbol]
         try:
             r = extract_company(yf.Ticker(symbol), {"symbol":symbol, "quoteType":"EQUITY"})
@@ -183,6 +192,8 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
         "membership_snapshot":sorted(members_map),"membership_rows":len(members),
         "fetched_records":len(good),"missing_records":len(members)-len(good),
         "new_records_last_batch":new_count,"attempts":attempts,
+        "schema_refresh_attempts":refresh_attempts,
+        "schema_refresh_pending":sum(s in rows and refresh_attempts.get(s,0)==0 for s in members_map),
         "attempted_total":sum(attempts.values()),"batch_size":batch_size,
         "quality_warning_count":sum(a["severity"]=="warning" for a in audit),
         "quality_critical_count":sum(a["severity"]=="critical" for a in audit),
@@ -193,7 +204,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
                  else "collecting",
     }
     write_state(state)
-    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts")},indent=2),flush=True)
+    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts")},indent=2),flush=True)
     # Never fail away real records because a subset of Yahoo retrievals were incomplete.
     return state
 
