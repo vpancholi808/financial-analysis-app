@@ -955,7 +955,7 @@
   "membership_source": "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv",
   "membership_status": "fresh",
   "missing_records": 1,
-  "new_records_last_batch": 502,
+  "new_records_last_batch": 0,
   "quality_critical_count": 0,
   "quality_warning_count": 2,
   "schema_refresh_attempts": {
@@ -1463,8 +1463,19 @@
     "ZTS": 1
   },
   "schema_refresh_pending": 0,
+  "stale_refresh_last_attempt": {
+    "ACN": "2026-10-21",
+    "AZO": "2026-10-21",
+    "COST": "2026-10-21",
+    "CPRT": "2026-10-21",
+    "FDS": "2026-10-21",
+    "FERG": "2026-10-21",
+    "JBL": "2026-10-21",
+    "MU": "2026-10-21",
+    "SKYD": "2026-10-21"
+  },
   "statement_completeness": 0.8924302788844621,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-10-21T14:04:26+00:00"
+  "updated_at": "2026-10-21T16:31:18+00:00"
 }
