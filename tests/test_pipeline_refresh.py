@@ -57,3 +57,22 @@ def test_sec_recheck_weekly_when_only_blanks_remain():
     checks = {"X": "2026-10-20|2026-06-30"}
     assert not sec_due("X", row, checks, "2026-10-21")
     assert sec_due("X", row, checks, "2026-10-27")
+
+
+def test_sec_pass_stops_when_sec_refuses_and_retries_next_day():
+    from sp500_pipeline import sec_pass, sec_due
+    from test_sec_edgar import yahoo_row
+
+    class Refusing:
+        calls = 0
+        def company_facts(self, symbol):
+            Refusing.calls += 1
+            raise RuntimeError("403 Client Error: Forbidden")
+
+    rows = {f"T{i}": yahoo_row(ticker=f"T{i}") for i in range(20)}
+    checks, status = {}, {}
+    log = sec_pass(rows, checks, today="2026-10-21", client=Refusing(), status=status)
+    assert Refusing.calls == 5 and status["aborted"] and "403" in status["last_error"]
+    assert "SEC PASS STOPPED" in log[-1]
+    assert not sec_due("T0", rows["T0"], checks, "2026-10-21")
+    assert sec_due("T0", rows["T0"], checks, "2026-10-22")

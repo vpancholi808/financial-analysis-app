@@ -41,9 +41,12 @@ def test_research_draft_does_not_carry_over_between_companies():
     at = AppTest.from_file(str(ROOT / "app.py")).run(timeout=90)
     at.sidebar.radio[0].set_value("Research Desk").run(timeout=90)
     at.selectbox(key="research_select").set_value("AAPL").run(timeout=90)
-    at.text_area(key="rd_thesis_AAPL").set_value("Apple-specific thesis").run(timeout=90)
+    thesis = lambda: next(t for t in at.text_area if t.label == "Investment thesis")
+    generated_aapl = thesis().value
+    assert generated_aapl and "Apple" in generated_aapl          # pre-filled from the analysis
+    thesis().set_value("Apple-specific thesis").run(timeout=90)
     at.selectbox(key="research_select").set_value("MSFT").run(timeout=90)
-    assert at.text_area(key="rd_thesis_MSFT").value == ""
+    assert thesis().value != "Apple-specific thesis" and "Microsoft" in thesis().value
     at.selectbox(key="research_select").set_value("AAPL").run(timeout=90)
-    assert at.text_area(key="rd_thesis_AAPL").value == "Apple-specific thesis"
+    assert thesis().value == "Apple-specific thesis"
     assert not at.exception, [str(x.message) for x in at.exception]

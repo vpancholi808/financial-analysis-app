@@ -305,7 +305,9 @@ class SecClient:
     def __init__(self, user_agent: str | None = None, pause: float = 0.15, session=None):
         import requests
         self.session = session or requests.Session()
-        self.session.headers.update({"User-Agent": user_agent or os.environ.get("SEC_USER_AGENT") or DEFAULT_USER_AGENT,
+        ua = (user_agent or os.environ.get("SEC_USER_AGENT") or "").strip() or DEFAULT_USER_AGENT
+        self.contact_set = ua != DEFAULT_USER_AGENT
+        self.session.headers.update({"User-Agent": ua,
                                      "Accept-Encoding": "gzip, deflate"})
         self.pause = pause
         self._ciks = None

@@ -6,13 +6,14 @@ holds the display helpers (number formats, grades, labels, tooltips).
 """
 from pathlib import Path
 import json
+import hashlib
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from finance_models import GICS_SECTORS, ScreenSettings, prepare, classify, scope_filter
-from research_workbench import describe, scenario, report, money, pct, n, change
+from research_workbench import describe, scenario, report, money, pct, n, change, investment_case
 from audit_data import audit_table
 from ui_format import (METRICS, MISSING, TONE_HEX, GOOD, BAD, CAUTION, NEUTRAL, NA,
                        fmt_money, fmt_pct, fmt_multiple, fmt_number, fmt_metric, ordinal,
@@ -537,7 +538,7 @@ elif page=="Company Profile":
 elif page=="Research Desk":
     eyebrow("Long and bearish cases")
     st.title("Research Desk")
-    st.caption("Evidence-based long and bearish cases · screening candidates, not automatic trade recommendations")
+    st.caption("Rule-based long / short recommendations from the accounting evidence · verify against the filings before acting")
     def shortlist(df,cols,cfg,title,key,empty):
         st.markdown(f"**{title}**")
         if df.empty:st.info(empty);return
@@ -560,9 +561,15 @@ elif page=="Research Desk":
     ticker=choose_company(view,"research_select","Company to research")
     r=view.loc[view.ticker.eq(ticker)].iloc[0]
     findings=describe(r,base)
+    case=investment_case(r,findings,settings)
     st.subheader(f"{r['name']} · {ticker}")
-    st.markdown(f"Research status: {badge(findings['verdict'],verdict_tone(findings['verdict']))}")
-    st.caption(md(findings["reason"]))
+    rec_tone={"Long":GOOD,"Short / avoid":BAD}.get(case["position"],NEUTRAL)
+    rec_icon={"Long":"▲","Short / avoid":"▼"}.get(case["position"],"●")
+    with st.container(border=True):
+        st.markdown(f"#### Recommendation &nbsp; {badge(rec_icon+' '+case['headline'],rec_tone)}")
+        st.markdown(md(case["summary"]))
+        st.caption("Rule-based call from the accounting screens and valuation below (current screen settings). "
+                   "No price target or return forecast. Verify against the 10-K before relying on it.")
     ps,sps=findings["ps"],findings["sector_ps"]
     vs=None
     if np.isfinite(ps) and np.isfinite(sps) and sps>0:
@@ -617,33 +624,45 @@ elif page=="Research Desk":
                           f"current P/S {fmt_multiple(ps)} (sector median {fmt_multiple(sps)}). A scenario at the current P/S implies 0% change."))
     st.caption("Revenue is annual historical data; market cap is a recent snapshot. Neither the multiples nor implied changes account for new earnings, share issuance or dilution.")
 
-    st.subheader("Finish the investment case")
-    st.caption("A defensible final recommendation needs the analyst's specific thesis, catalyst, opposing argument and an actual filing reference.")
+    st.subheader("Investment case")
+    st.caption("Pre-filled from the analysis above. Edit any section; your edits are kept for this company, and "
+               "the working paper records whether each section is generated or analyst-edited.")
     # Drafts are stored per company, so text written for one ticker can never
-    # appear in (or be exported with) another company's working paper.
+    # appear in (or be exported with) another company's working paper. Only
+    # analyst edits are stored; untouched fields follow the generated case.
     drafts=st.session_state.setdefault("research_drafts",{}).setdefault(ticker,{})
-    positions=["Under review","Long","Short / avoid","No position"]
+    generated={"position":case["position"],"thesis":case["thesis"],"catalyst":case["catalyst"],
+               "counter":case["counterargument"],"invalid":case["invalidation"],"filing":case["filing_reference"]}
     def draft_field(widget,field,label,**kw):
-        v=widget(label,value=drafts.get(field,""),key=f"rd_{field}_{ticker}",**kw)
-        drafts[field]=v
+        gen=generated[field]
+        v=widget(label,value=drafts.get(field,gen),key=f"rd_{field}_{ticker}_{hashlib.md5(gen.encode()).hexdigest()[:8]}",**kw)
+        if v!=gen:drafts[field]=v
+        else:drafts.pop(field,None)
         return v
+    positions=["Long","Short / avoid","No position","Under review"]
     with st.container(border=True):
-        pos_default=positions.index(drafts["position"]) if drafts.get("position") in positions else 0
-        position=st.selectbox("Your position",positions,index=pos_default,key=f"rd_position_{ticker}")
-        drafts["position"]=position
-        thesis=draft_field(st.text_area,"thesis","Investment thesis: why is the market mispricing this company?",height=95)
-        catalyst=draft_field(st.text_input,"catalyst","Catalyst and expected timing")
-        counter=draft_field(st.text_area,"counter","Strongest counterargument",height=75)
-        invalid=draft_field(st.text_input,"invalid","What evidence would invalidate the thesis?")
+        pos_value=drafts.get("position",generated["position"])
+        position=st.selectbox("Position",positions,index=positions.index(pos_value) if pos_value in positions else 2,
+                              key=f"rd_position_{ticker}_{generated['position']}")
+        if position!=generated["position"]:drafts["position"]=position
+        else:drafts.pop("position",None)
+        thesis=draft_field(st.text_area,"thesis","Investment thesis",height=170)
+        catalyst=draft_field(st.text_area,"catalyst","Catalyst and expected timing",height=80)
+        counter=draft_field(st.text_area,"counter","Strongest counterargument",height=95)
+        invalid=draft_field(st.text_area,"invalid","What evidence would invalidate the thesis?",height=80)
         filing=draft_field(st.text_input,"filing","SEC filing or issuer annual-report URL")
+        edited=sorted(drafts)
+        if edited:
+            st.caption("Analyst-edited: "+", ".join(edited))
+            if st.button("Reset to the generated case",key=f"rd_reset_{ticker}"):
+                drafts.clear();st.rerun()
     sections=dict(position=position,thesis=thesis,catalyst=catalyst,
-                  counterargument=counter,invalidation=invalid,filing_reference=filing)
+                  counterargument=counter,invalidation=invalid,filing_reference=filing,
+                  conviction=case["conviction"] if position==case["position"] else "",
+                  edited=", ".join(sorted(drafts)) or "none (generated case)")
     require=[thesis.strip(),catalyst.strip(),counter.strip(),invalid.strip(),filing.strip()]
-    done=sum(bool(x) for x in require)
-    st.progress(done/len(require),text=f"{done} of {len(require)} required sections complete")
-    if all(require):
-        st.success("Working paper is ready for analyst review; verify source references before using it as a recommendation.")
-    else:st.info("Research draft incomplete: supply thesis, catalyst, counterargument, invalidation and source filing.")
+    if not all(require):
+        st.info("Some sections are empty: thesis, catalyst, counterargument, invalidation and filing reference make a complete case.")
     assumptions={"Bear P/S":bear,"Base P/S":base_multiple,"Bull P/S":bull}
     st.download_button("Download research working paper",report(r,findings,assumptions,sections),
                        file_name=f"{ticker}_investment_research.md",mime="text/markdown",type="primary")
