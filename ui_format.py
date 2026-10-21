@@ -165,6 +165,7 @@ ALTMAN_LABELS = {
     "Lower distress signal": ("✓ Safe zone", GOOD),
     "Grey": ("● Grey zone", CAUTION),
     "Distress": ("⚠ Distress zone", BAD),
+    "Review – negative book equity": ("● Review: negative equity", CAUTION),
     "Not applicable": ("– Not applicable", NA),
 }
 
@@ -192,6 +193,8 @@ def screen_status(row) -> tuple[str, str]:
     get = row.get if hasattr(row, "get") else (lambda k, d=None: d)
     if not bool(get("industrial_applicable", True)):
         return "– Specialist sector", NA
+    if bool(get("stale_statements", False)):
+        return "– Stale statements", NA
     if bool(get("conflicting_signals", False)):
         return "◆ Mixed signals", CAUTION
     if bool(get("BUY_candidate", False)):
@@ -243,7 +246,7 @@ def risk_checks(row, settings=None) -> list[dict]:
     """Plain-language pass/fail view of the four SELL signals already computed
     by finance_models.classify (flags are read, never recomputed)."""
     get = row.get
-    applicable = bool(get("industrial_applicable", True))
+    applicable = bool(get("scoreable", get("industrial_applicable", True)))
     sta_pct = getattr(settings, "sell_sta_pct", 80)
     snoa_pct = getattr(settings, "sell_snoa_pct", 80)
     cutoff = getattr(settings, "sell_beneish_cutoff", -1.78)
@@ -258,20 +261,37 @@ def risk_checks(row, settings=None) -> list[dict]:
 
     snoa_v = get("SNOA")
     label, tone = check_status(get("SNOA_risk_flag"), snoa_v, applicable)
-    detail = ("Needs cash, debt, minority interest, preferred and common equity — not all reported." if tone == NA else
+    detail = ("Needs total assets, cash, short- and long-term debt and total liabilities — not all reported." if tone == NA else
               f"Net operating assets are {fmt_pct(snoa_v)} of assets — {ordinal(get('SNOA_sector_pct'))} percentile "
               f"(flag at ≥ {snoa_pct:.0f}th).")
     out.append(dict(check="Balance sheet not bloated", label=label, tone=tone, detail=detail))
 
     m = get("Beneish_M")
     label, tone = check_status(get("Beneish_risk_flag"), m, applicable)
-    detail = ("Needs two consecutive years of eight statement inputs." if tone == NA else
-              f"M-score {fmt_number(m)} vs cutoff {cutoff:.2f} — above the cutoff warrants filing review; not proof of fraud.")
+    status = str(get("Beneish_status", "") or "")
+    if tone == NA:
+        detail = "Needs two consecutive years of eight statement inputs."
+    elif status.startswith("Component outlier"):
+        label, tone = f"{ICONS['neutral']} Review", CAUTION
+        detail = (f"M-score {fmt_number(m)} is driven by an extreme index ({status.split(':', 1)[-1].strip()}), "
+                  "usually a near-zero prior-year figure; not counted as a flag.")
+    else:
+        side = "above" if num(m) > cutoff else "below"
+        detail = (f"M-score {fmt_number(m)} is {side} the {cutoff:.2f} cutoff"
+                  + (" — warrants filing review; not proof of fraud." if side == "above" else "."))
     out.append(dict(check="No manipulation warning", label=label, tone=tone, detail=detail))
 
     z = get("Altman_Z")
     label, tone = check_status(get("Altman_risk_flag"), z, applicable)
-    detail = ("Model inputs missing or not applicable to this sector." if tone == NA else
-              f"{get('Altman_model', '')} score {fmt_number(z)} → {altman_status(get('Altman_zone'))[0][2:]}.")
+    zone = str(get("Altman_zone", "") or "")
+    if tone == NA:
+        detail = ("Not applied to regulated utilities." if "utility" in str(get("Altman_model", "")) else
+                  "Model inputs missing or not applicable to this sector.")
+    elif zone.startswith("Review"):
+        label, tone = f"{ICONS['neutral']} Review", CAUTION
+        detail = (f"{get('Altman_model', '')} score {fmt_number(z)}, but book equity is negative (often from buybacks); "
+                  "the model does not fit, so this is not counted as a flag.")
+    else:
+        detail = f"{get('Altman_model', '')} score {fmt_number(z)} → {altman_status(zone)[0][2:]}."
     out.append(dict(check="Not in financial distress", label=label, tone=tone, detail=detail))
     return out

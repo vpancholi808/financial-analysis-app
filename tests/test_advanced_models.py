@@ -3,7 +3,8 @@ import math
 import numpy as np
 import pandas as pd
 import pytest
-from advanced_models import snoa, altman, beneish
+from advanced_models import (snoa, snoa_with_basis, altman, beneish, is_manufacturer,
+                             SNOA_COURSE, SNOA_IDENTITY)
 from finance_models import prepare, classify, ScreenSettings
 
 def sample(**kw):
@@ -29,7 +30,63 @@ def test_exact_snoa_user_formula():
     assert snoa(sample())==pytest.approx(.43)
 
 def test_snoa_does_not_invent_zero_minority_interest():
-    assert math.isnan(snoa(sample(minority_interest=np.nan)))
+    # With MI missing, MI + PE comes from the balance sheet (TA - TL - CE = 0 here),
+    # so operating liabilities = TL - STD - LTD = 500 and SNOA = (900 - 500) / 1000.
+    value,basis=snoa_with_basis(sample(minority_interest=np.nan))
+    assert value==pytest.approx(.40)
+    assert basis==SNOA_IDENTITY
+    # Substituting MI = 0 into the course formula would give 0.41 instead.
+    assert value!=pytest.approx(snoa(sample(minority_interest=0.)))
+
+def test_snoa_missing_when_liabilities_also_missing():
+    assert math.isnan(snoa(sample(minority_interest=np.nan,total_liabilities=np.nan)))
+    assert math.isnan(snoa(sample(short_term_debt=np.nan)))
+
+def test_snoa_identity_matches_course_formula_on_consistent_balance_sheet():
+    # A balance sheet where TL = TA - CE - MI - PE (Yahoo's liabilities net of MI).
+    consistent=dict(total_liabilities=1000.-300.-20.-10.)
+    course,course_basis=snoa_with_basis(sample(**consistent))
+    ident,ident_basis=snoa_with_basis(sample(minority_interest=np.nan,preferred_equity=np.nan,**consistent))
+    assert course_basis==SNOA_COURSE and ident_basis==SNOA_IDENTITY
+    assert ident==pytest.approx(course)
+
+def test_altman_uses_exact_subindustry_list():
+    assert is_manufacturer("Technology Hardware, Storage & Peripherals")
+    assert is_manufacturer("Health Care Equipment")
+    assert not is_manufacturer("Automotive Retail")
+    _,model,_=altman(sample(industry="Automotive Retail"))
+    assert "double-prime" in model
+    _,model,_=altman(sample(industry="Steel"))
+    assert "manufacturer" in model and "double-prime" not in model
+
+def test_altman_not_applied_to_utilities():
+    z,model,zone=altman(sample(sector="Utilities",industry="Electric Utilities"))
+    assert math.isnan(z) and zone=="Not applicable" and "utility" in model
+
+def test_altman_negative_equity_is_review_not_distress():
+    z,model,zone=altman(sample(industry="Restaurants",common_equity=-200.))
+    assert np.isfinite(z)
+    assert zone.startswith("Review")
+    d=classify(prepare(pd.DataFrame([sample(industry="Restaurants",common_equity=-200.)]),min_sector_n=1),ScreenSettings())
+    assert not bool(d.iloc[0].Altman_risk_flag)
+
+def test_beneish_outlier_is_reported_but_not_flagged():
+    # Prior receivables near zero -> DSRI far outside its plausible band.
+    m,terms,status=beneish(sample(prior_receivables=1.))
+    assert terms["DSRI"]>4 and np.isfinite(m)
+    assert status.startswith("Component outlier") and "DSRI" in status
+    d=classify(prepare(pd.DataFrame([sample(prior_receivables=1.)]),min_sector_n=1),
+               ScreenSettings(sell_beneish_cutoff=-10))
+    assert bool(d.iloc[0].Beneish_outlier)
+    assert not bool(d.iloc[0].Beneish_risk_flag)
+
+def test_beneish_year_order_with_asymmetric_inputs():
+    # Every index differs from 1, so swapping current and prior years would fail.
+    m,terms,_=beneish(sample(accounts_receivable=150.,cost_of_revenue=660.,depreciation=45.,sga=150.))
+    assert terms["DSRI"]==pytest.approx((150/1200)/(100/1000))
+    assert terms["GMI"]==pytest.approx(((1000-500)/1000)/((1200-660)/1200))
+    assert terms["DEPI"]==pytest.approx((50/(50+250))/(45/(45+300)))
+    assert terms["SGAI"]==pytest.approx((150/1200)/(100/1000))
 
 def test_public_manufacturer_altman_hand_check():
     z,model,zone=altman(sample())

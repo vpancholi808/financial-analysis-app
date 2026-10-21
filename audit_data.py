@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 import numpy as np
 import pandas as pd
-from finance_models import prepare, UNIVERSE_COLUMNS
+from finance_models import prepare, UNIVERSE_COLUMNS, STALE_STATEMENT_DAYS
 
 ROOT=Path(__file__).resolve().parent
 AUDIT_COLUMNS=["ticker","severity","category","detail","as_of"]
@@ -53,14 +53,27 @@ def audit_table(raw: pd.DataFrame, members: pd.DataFrame | None = None,
         if pd.notna(r.get("cash_and_equivalents")) and (r.cash_and_equivalents<0 or r.cash_and_equivalents>a*1.05):
             flag(r,"warning","CASH_OUTSIDE_ASSETS","Cash is negative or exceeds total assets")
         fy=pd.to_datetime(r.get("fiscal_year_end"),errors="coerce")
-        if pd.notna(fy) and (now-fy).days>650:
-            flag(r,"warning","STALE_FISCAL_PERIOD","Fiscal statement is more than 650 days old")
+        if pd.notna(fy) and (now-fy).days>STALE_STATEMENT_DAYS:
+            flag(r,"warning","STALE_FISCAL_PERIOD",f"Fiscal statement is more than {STALE_STATEMENT_DAYS} days old; excluded from ranking and screens")
         if pd.notna(fy) and (now-fy).days < -65:
             flag(r,"critical","FUTURE_FISCAL_PERIOD","Annual fiscal date is in the future")
         # Independently recompute active formulas, requiring every source input.
-        raw_gp=r.get("gross_profit",np.nan)
+        # Gross profit is rebuilt from the raw columns, not the model's derived field.
+        if pd.notna(r.revenue) and pd.notna(r.cost_of_revenue):
+            raw_gp=r.revenue-r.cost_of_revenue
+        else:
+            raw_gp=r.get("gross_profit_reported",np.nan)
+        cash,std,ltd,tl=(r.get(k,np.nan) for k in ("cash_and_equivalents","short_term_debt","long_term_debt","total_liabilities"))
+        mi,pe,ce=(r.get(k,np.nan) for k in ("minority_interest","preferred_equity","common_equity"))
+        if pd.notna(cash) and pd.notna(std) and pd.notna(ltd) and pd.notna(mi) and pd.notna(pe) and pd.notna(ce):
+            snoa_exp=((a-cash)-(a-std-ltd-mi-pe-ce))/a
+        elif pd.notna(cash) and pd.notna(std) and pd.notna(ltd) and pd.notna(tl):
+            snoa_exp=((a-cash)-(tl-std-ltd))/a
+        else:
+            snoa_exp=np.nan
         expected={
             "GPA": raw_gp/a if pd.notna(raw_gp) else np.nan,
+            "SNOA": snoa_exp,
             "STA": (r.net_income-r.operating_cash_flow)/a if pd.notna(r.net_income) and pd.notna(r.operating_cash_flow) else np.nan,
             "ROA": r.net_income/a if pd.notna(r.net_income) else np.nan,
             "CFOA": r.operating_cash_flow/a if pd.notna(r.operating_cash_flow) else np.nan,

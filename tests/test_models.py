@@ -144,3 +144,32 @@ def test_no_demo_generated_or_referenced():
     assert 'demo_data(' not in src
     assert 'Synthetic Company' not in src
     assert 'Synthetic Company' not in (Path(__file__).resolve().parents[1]/'universe.csv').read_text()
+
+
+def test_share_classes_count_once_in_benchmarks():
+    rows=cohort()
+    twin=rows.iloc[[3]].copy();twin["ticker"]="R3B"
+    with_twin=prepare(pd.concat([rows,twin],ignore_index=True))
+    alone=prepare(rows)
+    t=with_twin.set_index("ticker")
+    assert t.loc["R3B","share_class_of"]=="R3" and not t.loc["R3B","issuer_primary"]
+    # The duplicate listing does not move anyone's sector percentile.
+    assert np.allclose(t.loc[alone.ticker,"GPA_sector_pct"].values,alone.GPA_sector_pct.values)
+    assert t.loc["R3B","GPA_sector_pct"]==pytest.approx(t.loc["R3","GPA_sector_pct"])
+
+
+def test_stale_statements_visible_but_not_screened():
+    rows=cohort()
+    rows.loc[0,"fiscal_year_end"]="2024-06-30"   # ~840 days before the quote date
+    d=classify(prepare(rows),ScreenSettings(buy_gpa_pct=0,buy_bm_pct=0,buy_score_min=0,
+                                           sell_sta_pct=0,sell_sta_floor=-1))
+    r=d.set_index("ticker").loc["R0"]
+    assert bool(r.stale_statements) and not bool(r.scoreable)
+    assert pd.notna(r.GPA) and pd.isna(r.GPA_sector_pct)
+    assert not bool(r.BUY_candidate) and not bool(r.SELL_candidate)
+    assert d.loc[d.ticker.ne("R0"),"BUY_candidate"].any()
+
+
+def test_prepare_handles_empty_frame():
+    d=prepare(cohort().iloc[:0])
+    assert len(d)==0 and "SNOA" in d.columns and "Altman_zone" in d.columns

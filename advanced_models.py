@@ -1,26 +1,50 @@
 """Documented advanced accounting signals for ACCT 3343.
 
 SNOA implements the supplied course definition, without treating absent data
-as zero. Altman variants use different published coefficients/thresholds.
-Beneish is an eight-variable M-SCORE, NOT a calibrated probability of fraud.
-Incomplete, invalid or sector-incompatible source data produces NaN.
+as zero. When Yahoo omits the minority-interest or preferred-equity line, the
+same formula is evaluated through the balance-sheet identity
+MI + PE = TA - TL - CE (TL is Yahoo's liabilities net of minority interest),
+which is algebraically identical and substitutes no value. Altman variants use
+different published coefficients/thresholds. Beneish is an eight-variable
+M-SCORE, NOT a calibrated probability of fraud. Incomplete, invalid or
+sector-incompatible source data produces NaN.
 """
 import math
 import numpy as np
 import pandas as pd
 
 EXCLUDED_SECTORS={"Financials","Real Estate"}
-# Unambiguously physical-production GICS-like subindustries; other eligible
-# operating companies use Z-double-prime. Classification is reviewable.
-MANUFACTURER_TERMS=(
- "manufactur","semiconductor","automobile","automotive",
- "machinery","industrial conglomerat","electronic equipment",
- "electrical equipment","household appliances","consumer electronics",
- "building products","aerospace","defense","construction machinery",
- "food products","beverages","chemicals","paper & forest",
- "personal care products","metal","materials","textiles",
- "tobacco","packaged food","pharmaceuticals","medical equipment",
-)
+# Regulated utilities carry structurally negative working capital and high
+# regulated leverage; neither Altman variant was estimated on them.
+ALTMAN_EXCLUDED_SECTORS={"Utilities"}
+# Explicit GICS sub-industries treated as public manufacturers (original Z).
+# Exact matches only, so "Automotive Retail" is NOT a manufacturer. Every other
+# eligible operating company uses Z-double-prime. The list is reviewable.
+MANUFACTURER_SUBINDUSTRIES=frozenset({
+ "Aerospace & Defense","Automobile Manufacturers","Automotive Parts & Equipment",
+ "Semiconductors","Semiconductor Materials & Equipment",
+ "Technology Hardware, Storage & Peripherals","Communications Equipment",
+ "Electronic Components","Electronic Equipment & Instruments",
+ "Electronic Manufacturing Services","Electrical Components & Equipment",
+ "Heavy Electrical Equipment","Industrial Machinery & Supplies & Components",
+ "Construction Machinery & Heavy Transportation Equipment",
+ "Agricultural & Farm Machinery","Building Products","Industrial Conglomerates",
+ "Health Care Equipment","Health Care Supplies","Pharmaceuticals","Biotechnology",
+ "Packaged Foods & Meats","Soft Drinks & Non-alcoholic Beverages",
+ "Distillers & Vintners","Brewers","Tobacco","Household Products",
+ "Personal Care Products","Footwear","Apparel, Accessories & Luxury Goods",
+ "Leisure Products","Consumer Electronics",
+ "Commodity Chemicals","Specialty Chemicals","Fertilizers & Agricultural Chemicals",
+ "Industrial Gases","Steel","Copper","Construction Materials",
+ "Metal, Glass & Plastic Containers","Paper & Plastic Packaging Products & Materials",
+})
+# Plausibility band per Beneish index. Values outside it are almost always a
+# near-zero prior-year denominator or a mis-mapped source line; the score is
+# still reported but marked for review and NOT counted as a risk flag.
+BENEISH_BOUNDS=dict(DSRI=(0.2,4.0),GMI=(0.2,4.0),AQI=(0.2,4.0),SGI=(0.3,3.0),
+                    DEPI=(0.3,3.0),SGAI=(0.3,3.0),LVGI=(0.3,3.0),TATA=(-0.5,0.5))
+SNOA_COURSE="Course formula"
+SNOA_IDENTITY="Balance-sheet identity (MI + PE = TA − TL − CE)"
 
 def get(row, key):
     try:
@@ -35,23 +59,41 @@ def ratio(n,d,positive=True):
     v=n/d
     return v if np.isfinite(v) else np.nan
 
-def snoa(row):
-    """[(assets - cash) - (assets - ST debt - LT debt - minority
-    interest - preferred equity - book common equity)] / assets."""
+def snoa_with_basis(row):
+    """[(assets - cash) - (assets - ST debt - LT debt - minority interest -
+    preferred equity - book common equity)] / assets, with its input basis.
+
+    The course form is used whenever every line is reported. Otherwise the
+    combined MI + PE is taken from the balance sheet itself (TA - TL - CE), so
+    operating liabilities reduce to TL - STD - LTD; nothing is assumed zero.
+    """
     a=get(row,"total_assets");cash=get(row,"cash_and_equivalents")
     st=get(row,"short_term_debt");lt=get(row,"long_term_debt")
     mi=get(row,"minority_interest");pref=get(row,"preferred_equity")
-    common=get(row,"common_equity")
-    if not np.isfinite(a) or a<=0:return np.nan
-    if not all(np.isfinite(x) for x in [cash,st,lt,mi,pref,common]):return np.nan
+    common=get(row,"common_equity");tl=get(row,"total_liabilities")
+    if not np.isfinite(a) or a<=0:return np.nan,"Unavailable"
+    if not all(np.isfinite(x) for x in [cash,st,lt]):return np.nan,"Unavailable"
     operating_assets=a-cash
-    operating_liabilities=a-st-lt-mi-pref-common
-    return ratio(operating_assets-operating_liabilities,a)
+    if all(np.isfinite(x) for x in [mi,pref,common]):
+        operating_liabilities=a-st-lt-mi-pref-common
+        return ratio(operating_assets-operating_liabilities,a),SNOA_COURSE
+    if np.isfinite(tl):
+        operating_liabilities=tl-st-lt
+        return ratio(operating_assets-operating_liabilities,a),SNOA_IDENTITY
+    return np.nan,"Unavailable"
+
+def snoa(row):
+    return snoa_with_basis(row)[0]
+
+def is_manufacturer(industry) -> bool:
+    return str(industry or "").strip() in MANUFACTURER_SUBINDUSTRIES
 
 def altman(row):
     """Return (score, model, zone); not a definitive bankruptcy probability."""
     sector=str(row.get("sector",""))
     if sector in EXCLUDED_SECTORS:return np.nan,"Not applicable","Not applicable"
+    if sector in ALTMAN_EXCLUDED_SECTORS:
+        return np.nan,"Not applicable (regulated utility)","Not applicable"
     assets=get(row,"total_assets")
     ca=get(row,"current_assets");cl=get(row,"current_liabilities")
     re=get(row,"retained_earnings");ebit=get(row,"ebit")
@@ -61,9 +103,7 @@ def altman(row):
     if not all(np.isfinite(x) for x in (ca,cl,re,ebit)):
         return np.nan,"Insufficient input","N/A"
     x1=(ca-cl)/assets;x2=re/assets;x3=ebit/assets
-    industry=str(row.get("industry","")).lower()
-    manufacturing=any(k in industry for k in MANUFACTURER_TERMS)
-    if manufacturing:
+    if is_manufacturer(row.get("industry","")):
         mv=get(row,"market_cap")
         if str(row.get("market_currency","")).upper()!=str(row.get("financial_currency","")).upper():
             return np.nan,"Original Z (manufacturer)","N/A"
@@ -76,9 +116,18 @@ def altman(row):
         if not np.isfinite(equity):return np.nan,"Z double-prime (nonmanufacturer)","N/A"
         score=6.56*x1+3.26*x2+6.72*x3+1.05*equity/tl
         model="Z double-prime (nonmanufacturer)"
-        zone="Distress" if score<1.1 else "Grey" if score<=2.6 else "Lower distress signal"
+        if equity<=0:
+            # Buyback-driven negative book equity drives X4 negative; Z'' was
+            # not estimated on such firms, so the zone is a review item.
+            zone="Review – negative book equity"
+        else:
+            zone="Distress" if score<1.1 else "Grey" if score<=2.6 else "Lower distress signal"
     if not np.isfinite(score):return np.nan,model,"N/A"
     return score,model,zone
+
+def beneish_outliers(terms) -> list[str]:
+    return [k for k,(lo,hi) in BENEISH_BOUNDS.items()
+            if k in terms and np.isfinite(terms[k]) and not lo<=terms[k]<=hi]
 
 def beneish(row):
     """Original eight-variable Beneish M-score; uses net income as TATA proxy
@@ -114,11 +163,22 @@ def beneish(row):
     if not all(np.isfinite(x) for x in terms.values()):return np.nan,terms,"Insufficient input"
     m=(-4.84+.920*dsri+.528*gmi+.404*aqi+.892*sgi+.115*depi
        -.172*sgai+4.679*tata-.327*lvgi)
+    extreme=beneish_outliers(terms)
+    if extreme:
+        return m,terms,"Component outlier – review: "+", ".join(extreme)
     return m,terms,"Above screen cutoff" if m>-1.78 else "Below screen cutoff"
 
 def compute_advanced(row):
     score,model,zone=altman(row)
     ms,terms,status=beneish(row)
-    return pd.Series({"SNOA":snoa(row),"Altman_Z":score,"Altman_model":model,
+    snoa_value,snoa_basis=snoa_with_basis(row)
+    out={"SNOA":snoa_value,"SNOA_basis":snoa_basis,"Altman_Z":score,"Altman_model":model,
       "Altman_zone":zone,"Beneish_M":ms,"Beneish_status":status,
-      "Beneish_inputs_used":len(terms)})
+      "Beneish_inputs_used":len(terms),
+      "Beneish_outlier":bool(str(status).startswith("Component outlier"))}
+    for k in BENEISH_BOUNDS:
+        out["Beneish_"+k]=terms.get(k,np.nan)
+    return pd.Series(out)
+
+ADVANCED_COLUMNS=["SNOA","SNOA_basis","Altman_Z","Altman_model","Altman_zone","Beneish_M",
+                  "Beneish_status","Beneish_inputs_used","Beneish_outlier"]+["Beneish_"+k for k in BENEISH_BOUNDS]

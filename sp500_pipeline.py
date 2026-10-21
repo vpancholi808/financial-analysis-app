@@ -122,6 +122,31 @@ def anomaly_flags(r, reference_date=None):
             flag("critical","FUTURE_FISCAL_DATE","Fiscal year occurs in the future")
     return issues
 
+# Most S&P 500 companies file their 10-K within 30-45 days of fiscal year-end
+# (large accelerated filers must file within 60); check daily from day 40.
+NEW_ANNUAL_AFTER_DAYS = 365 + 40
+
+def due_for_statement_refresh(rows, today=None, last_attempts=None):
+    """Tickers whose saved fiscal year should already have been superseded by a
+    newer annual report. Each is retried at most once per calendar day."""
+    today = pd.Timestamp(today or datetime.now(timezone.utc).date()).normalize()
+    last_attempts = last_attempts or {}
+    due = []
+    for symbol, r in rows.items():
+        fye = pd.to_datetime(r.get("fiscal_year_end"), errors="coerce")
+        if pd.isna(fye) or (today - fye).days < NEW_ANNUAL_AFTER_DAYS:
+            continue
+        if last_attempts.get(symbol) == str(today.date()):
+            continue
+        due.append(symbol)
+    return due
+
+def is_newer_statement(old_row, new_row):
+    """Accept a refreshed record only when its fiscal year-end is later."""
+    old = pd.to_datetime(old_row.get("fiscal_year_end"), errors="coerce")
+    new = pd.to_datetime(new_row.get("fiscal_year_end"), errors="coerce")
+    return pd.notna(new) and (pd.isna(old) or new > old)
+
 def complete_fraction(df, keys=("gross_profit_reported","net_income","operating_cash_flow","total_assets","common_equity")):
     if df.empty: return 0.
     return float(df[list(keys)].notna().all(axis=1).mean())
@@ -147,11 +172,18 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
     refresh_attempts = {str(k):int(v) for k,v in prior.get("schema_refresh_attempts",{}).items()}
     needs_schema_refresh = [s for s in members_map if s in rows and refresh_attempts.get(s,0)==0]
     missing_members = [s for s in members_map if s not in rows and attempts.get(s,0)<retry_cap]
-    pending = missing_members + needs_schema_refresh
-    print(f"S&P constituents: {len(members)}; fetched: {len(rows)}; missing: {len(missing_members)}; scheduled refresh: {len(needs_schema_refresh)}", flush=True)
+    stale_last = {str(k):str(v) for k,v in prior.get("stale_refresh_last_attempt",{}).items()}
+    stale_due = [s for s in due_for_statement_refresh(rows, last_attempts=stale_last)
+                 if s in members_map and s not in needs_schema_refresh]
+    pending = missing_members + needs_schema_refresh + stale_due
+    print(f"S&P constituents: {len(members)}; fetched: {len(rows)}; missing: {len(missing_members)}; scheduled refresh: {len(needs_schema_refresh)}; newer annual report due: {len(stale_due)}", flush=True)
     new_count = 0
+    today = str(datetime.now(timezone.utc).date())
     for symbol in pending[:batch_size]:
-        if symbol in rows:
+        stale_refresh = symbol in stale_due
+        if stale_refresh:
+            stale_last[symbol] = today
+        elif symbol in rows:
             refresh_attempts[symbol] = refresh_attempts.get(symbol,0) + 1
         else:
             attempts[symbol] = attempts.get(symbol,0) + 1
@@ -167,7 +199,9 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
                 r["data_source"] = "Financials: Yahoo Finance (yfinance); membership: S&P 500 constituent list"
                 if "symbol" in r and not r["ticker"]: r["ticker"] = symbol
                 r["ticker"] = symbol
-                if pd.notna(pd.to_numeric(r.get("total_assets"),errors="coerce")) and float(r["total_assets"])>0:
+                if stale_refresh and not is_newer_statement(rows[symbol], r):
+                    print("NO NEWER ANNUAL REPORT YET",symbol,flush=True)
+                elif pd.notna(pd.to_numeric(r.get("total_assets"),errors="coerce")) and float(r["total_assets"])>0:
                     rows[symbol] = r
                     new_count += 1
                     print("ACCEPT",symbol,"total",len(rows),flush=True)
@@ -193,6 +227,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
         "fetched_records":len(good),"missing_records":len(members)-len(good),
         "new_records_last_batch":new_count,"attempts":attempts,
         "schema_refresh_attempts":refresh_attempts,
+        "stale_refresh_last_attempt":stale_last,
         "schema_refresh_pending":sum(s in rows and refresh_attempts.get(s,0)==0 for s in members_map),
         "attempted_total":sum(attempts.values()),"batch_size":batch_size,
         "quality_warning_count":sum(a["severity"]=="warning" for a in audit),
@@ -204,7 +239,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True):
                  else "collecting",
     }
     write_state(state)
-    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts")},indent=2),flush=True)
+    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts","stale_refresh_last_attempt")},indent=2),flush=True)
     # Never fail away real records because a subset of Yahoo retrievals were incomplete.
     return state
 

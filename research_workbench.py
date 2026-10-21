@@ -86,7 +86,7 @@ def describe(row,peers):
             strengths.append(f"Gross-profitability rank is the {n(row,'GPA_sector_pct'):.0f}th sector percentile.")
     else:gaps.append("Gross profit unavailable: no GPA conclusion.")
     if np.isfinite(bm):
-        strengths.append(f"Book-to-market is {bm:.2f}x (current market cap / latest annual book equity comparison).")
+        strengths.append(f"Book-to-market is {bm:.2f} (latest annual common book equity / current market cap).")
         if np.isfinite(n(row,"BM_sector_pct")):
             strengths.append(f"Book-to-market sits at the {n(row,'BM_sector_pct'):.0f}th sector percentile.")
     else:gaps.append("Comparable positive common equity or market cap unavailable.")
@@ -107,20 +107,27 @@ def describe(row,peers):
         else:
             strengths.append(label+"; no comparable sector median available.")
     else:gaps.append("Positive annual revenue and positive current market cap required for sales valuation.")
-    if np.isfinite(sta) and sta>0:
-        risks.append(f"Scaled accruals are {pct(sta)}: net income exceeds operating cash flow relative to assets.")
-    if np.isfinite(n(row,"SNOA_sector_pct")) and n(row,"SNOA_sector_pct")>=80:
+    # Risk bullets follow the active screen flags, so they always agree with the
+    # user's slider settings instead of hard-coded thresholds.
+    if bool(row.get("STA_risk_flag",False)):
+        risks.append(f"Scaled accruals are {pct(sta)}: net income exceeds operating cash flow relative to assets "
+                     f"({n(row,'STA_sector_pct'):.0f}th sector percentile).")
+    if bool(row.get("SNOA_risk_flag",False)):
         risks.append(f"SNOA is in the {n(row,'SNOA_sector_pct'):.0f}th percentile of sector peers.")
+    if bool(row.get("Beneish_outlier",False)):
+        gaps.append(f"Beneish M-score is not used: {row.get('Beneish_status','component outlier')} (usually a near-zero prior-year figure).")
     if bool(row.get("Beneish_risk_flag",False)):
         risks.append(f"Beneish M-score {n(row,'Beneish_M'):.2f} breaches the active manipulation-risk screen; not proof of fraud.")
     if bool(row.get("Altman_risk_flag",False)):
         risks.append(f"Altman model shows a distress-zone score of {n(row,'Altman_Z'):.2f}; confirm business-type applicability.")
+    if str(row.get("Altman_zone","")).startswith("Review"):
+        gaps.append("Altman Z double-prime not used: negative book equity (often from buybacks) is outside the model's design.")
     if bool(row.get("conflicting_signals",False)):
         risks.append("Opposing BUY and SELL screen signals require qualitative resolution.")
     if not np.isfinite(n(row,"Beneish_M")):
         gaps.append("Beneish unavailable; required two-year statement components missing.")
     if not np.isfinite(n(row,"SNOA")):
-        gaps.append("SNOA unavailable; one or more operating-asset/liability components missing.")
+        gaps.append("SNOA unavailable; cash, short- or long-term debt, or total liabilities missing.")
     if not np.isfinite(n(row,"Altman_Z")):
         gaps.append("Altman model unavailable or not appropriate for this industry.")
     gaps.append("Catalysts, market expectations, forecasts, stock-borrow cost and SEC filing review are not contained in these annual statements.")
