@@ -12,6 +12,7 @@ from finance_models import (GICS_SECTORS, ScreenSettings, prepare, classify,
 from research import evidence, metric, research_report, growth
 from build_universe import extract_company
 from sp500_pipeline import anomaly_flags
+from audit_data import audit_table
 
 ROOT = Path(__file__).resolve().parent
 st.set_page_config(page_title='Financial Analysis | Equity Research', page_icon='📈',
@@ -34,26 +35,6 @@ a {color:#51D1BF!important;}
  border-radius:10px; color:#BCCBDD; font-size:.94rem;}
 </style>''', unsafe_allow_html=True)
 
-PRESET = 'AAPL, MSFT, NVDA, AVGO, AMD, ANET, ADBE, CRM, ORCL, CSCO, INTC, MU'
-MAX_TEST_TICKERS = 15
-
-@st.cache_data(ttl=21600, show_spinner=False)
-def fetch_live_tickers(symbols: tuple[str,...]):
-    """Fetch real annual statements on user request; nothing synthetic."""
-    import yfinance as yf
-    rows, messages = [], []
-    for symbol in symbols:
-        try:
-            company = yf.Ticker(symbol)
-            item = extract_company(company, {'symbol': symbol})
-            if item is not None:
-                rows.append(item)
-            else:
-                messages.append(f'{symbol}: no matching usable annual statements, sector or essential assets; skipped.')
-        except Exception as exc:
-            messages.append(f'{symbol}: {type(exc).__name__} while retrieving from Yahoo Finance; skipped.')
-    return pd.DataFrame(rows), messages
-
 @st.cache_data(ttl=1800)
 def saved_universe():
     file = ROOT / 'universe.csv'
@@ -65,11 +46,6 @@ def load_config():
         return json.loads((ROOT / 'config.json').read_text())
     except (OSError, json.JSONDecodeError):
         return {}
-
-def normal_tickers(text):
-    import re
-    tokens = re.split(r'[\s,;]+', text.strip().upper())
-    return tuple(dict.fromkeys(s for s in tokens if re.fullmatch(r'[A-Z0-9.^-]{1,16}', s)))
 
 def money(n):
     if pd.isna(n): return 'N/A'
@@ -89,9 +65,9 @@ def numeric_table(df, cols, order_col=None):
         return
     view = df[cols].copy()
     spec = {}
-    for key in ['GPA', 'BM', 'STA', 'ROA', 'CFOA']:
+    for key in ['GPA', 'BM', 'STA', 'ROA', 'CFOA', 'SNOA', 'Altman_Z', 'Beneish_M']:
         if key in view: spec[key] = st.column_config.NumberColumn(key, format='%.3f')
-    for key in ['GPA_sector_pct', 'BM_sector_pct','STA_sector_pct','BUY_score']:
+    for key in ['GPA_sector_pct', 'BM_sector_pct','STA_sector_pct','SNOA_sector_pct','BUY_score']:
         if key in view: spec[key] = st.column_config.NumberColumn(key, format='%.1f')
     if 'market_cap' in view:
         view['market_cap']=view['market_cap'].map(money)
@@ -135,7 +111,7 @@ with st.sidebar:
     st.progress(min(1.0,len(data)/member_count) if member_count else 0.0)
     st.caption('S&P 500 constituents · Yahoo Finance financials · TSM excluded')
     if state:
-        st.caption(f"Processed {int(state.get('cursor',0)):,} candidates.")
+        st.caption(f"Imported {int(state.get('fetched_records',len(data))):,}; collection status: {state.get('status','unknown')}")
     st.caption('Full-universe collection is managed through GitHub Actions.')
 
 if data.empty:
@@ -147,6 +123,11 @@ base=prepare(data, min_sector_n=10, min_industry_n=10)
 if base.empty:
     st.error('The dataset has no eligible tickers.')
     st.stop()
+
+@st.cache_data(ttl=1800,show_spinner=False)
+def completed_audit(source_data, source_members):
+    return audit_table(source_data,source_members)
+audit_issues,audit_summary=completed_audit(data,membership)
 
 with st.sidebar:
     st.markdown('#### Universe filters')
@@ -163,14 +144,18 @@ with st.sidebar:
     with st.expander('SELL earnings-quality rules',expanded=False):
         sta_pct=st.slider('STA · sector percentile ≥',0,100,80,5)
         sta_floor=st.slider('STA · absolute ratio >',0.,.5,0.,.01)
-        st.caption('Only STA is active until the course-defined SNOA, Beneish and Altman models are verified.')
+        snoa_pct=st.slider('SNOA · sector percentile ≥',0,100,80,5)
+        beneish_cut=st.number_input('Beneish M-score screen cutoff',value=-1.78,step=.01)
+        min_flags=st.slider('Minimum distinct SELL warning signals',1,4,1)
+        st.caption('Signals: high STA, high SNOA, Beneish M-score, model-specific Altman distress. Missing inputs do not trigger a flag.')
 
 settings=ScreenSettings(buy_gpa_pct=gpa_pct,buy_bm_pct=bm_pct,buy_score_min=buy_score,
-                        buy_gpa_weight=gpa_weight,sell_sta_pct=sta_pct,sell_sta_floor=sta_floor)
+                        buy_gpa_weight=gpa_weight,sell_sta_pct=sta_pct,sell_sta_floor=sta_floor,
+                        sell_snoa_pct=snoa_pct,sell_beneish_cutoff=beneish_cut,sell_min_flags=min_flags)
 filtered=scope_filter(base,sectors,industry,min_cap*1e9,excluded)
 view=classify(filtered,settings)
 buys=view.loc[view.BUY_candidate].sort_values('BUY_score',ascending=False)
-sells=view.loc[view.SELL_candidate].sort_values('STA',ascending=False)
+sells=view.loc[view.SELL_candidate].sort_values(['SELL_flag_count','STA'],ascending=[False,False])
 
 status='S&P 500 · SAVED REAL YAHOO FINANCIALS'
 st.caption(f'{status} · {len(base)} fetched company records · {len(filtered)} shown after filters · no synthetic securities')
@@ -185,16 +170,15 @@ if page=='Stock Screener':
     col2.metric('BUY candidates',len(buys))
     col3.metric('SELL candidates',len(sells))
     col4.metric('Conflicting signals',int(view.conflicting_signals.sum()))
-    audit_path=ROOT/'data_quality.csv'
-    audit=pd.read_csv(audit_path) if audit_path.exists() else pd.DataFrame()
+    audit=audit_issues
     a,b,c=st.columns(3)
     a.metric('Constituent coverage',f'{len(base)/member_count:.1%}' if member_count else 'N/A')
     b.metric('Missing S&P 500 statements',max(0,member_count-len(base)))
-    c.metric('Reported data anomalies',len(audit.loc[audit.severity.isin(['warning','critical'])]) if 'severity' in audit else 0)
-    if not audit.empty and {'ticker','severity','issue'}.issubset(audit):
+    c.metric('Accounting review flags',audit_summary['warnings']+audit_summary['review']+audit_summary['critical'])
+    if not audit.empty and {'ticker','severity','category'}.issubset(audit):
         with st.expander('Data quality · flagged abnormalities and missing constituents'):
             st.caption('Flags invite verification against original SEC or issuer filings. Missing inputs are not silently imputed.')
-            st.dataframe(audit[['ticker','severity','issue','detail']].head(500),hide_index=True,use_container_width=True)
+            st.dataframe(audit[['ticker','severity','category','detail']].head(500),hide_index=True,use_container_width=True)
             st.download_button('Download full data-quality audit',audit.to_csv(index=False),'sp500_data_quality.csv','text/csv')
     st.subheader('Financial factor visualizations')
     if not view.empty:
@@ -256,8 +240,8 @@ if page=='Stock Screener':
         numeric_table(buys,['ticker','name','sector','market_cap','GPA','BM','GPA_sector_pct','BM_sector_pct','BUY_score'])
         st.download_button('Export BUY results',buys.to_csv(index=False),'buy_candidates.csv','text/csv')
     with tab_sell:
-        st.caption('Risk screen uses positive scaled total accruals. The remaining course SELL models are not silently substituted.')
-        numeric_table(sells,['ticker','name','sector','STA','STA_sector_pct','SELL_flag_count','BUY_candidate'])
+        st.caption('Independent risk indicators: high accruals, SNOA, Beneish M-score and model-appropriate Altman distress. Values unavailable due to missing fields stay N/A.')
+        numeric_table(sells,['ticker','name','sector','STA','SNOA','Beneish_M','Altman_Z','Altman_model','SELL_flag_count','BUY_candidate'])
         st.download_button('Export SELL results',sells.to_csv(index=False),'sell_candidates.csv','text/csv')
     with tab_sector:
         eligible=base.loc[base.industrial_applicable]
@@ -271,11 +255,12 @@ if page=='Stock Screener':
         st.caption('These are full-universe peer benchmarks; banks and REITs are not ranked with industrial companies.')
         if not audit.empty and 'severity' in audit:
             st.write('Detected data-quality issues by type')
-            problems=audit.groupby(['severity','issue']).size().reset_index(name='Count').sort_values('Count',ascending=False).head(15)
-            if len(problems): st.plotly_chart(px.bar(problems,x='Count',y='issue',color='severity',orientation='h'),use_container_width=True)
+            problems=audit.groupby(['severity','category']).size().reset_index(name='Count').sort_values('Count',ascending=False).head(15)
+            if len(problems): st.plotly_chart(px.bar(problems,x='Count',y='category',color='severity',orientation='h'),use_container_width=True)
     with st.expander('Calculation methodology & data-quality audit'):
         st.markdown('''**GPA** = (revenue − cost of revenue) / assets · **B/M** = positive common equity / market cap (same currency) · **STA** = (net income − operating cash flow) / assets. Sector percentiles are calculated before user filtering. No missing inputs are filled with zero. When there are fewer than 10 valid peers, percentiles are shown as unavailable.''')
         st.json(validate_universe(base))
+        st.json(audit_summary)
 
 elif page=='Company Fundamentals':
     if view.empty:
@@ -291,6 +276,11 @@ elif page=='Company Fundamentals':
     b.metric('GPA',fmt_value(r.GPA,True))
     c.metric('B/M',fmt_value(r.BM))
     d.metric('STA',fmt_value(r.STA,True))
+    a2,b2,c2=st.columns(3)
+    a2.metric('SNOA',fmt_value(r.SNOA,True))
+    b2.metric('Altman Z / Z double-prime',fmt_value(r.Altman_Z))
+    c2.metric('Beneish M-score',fmt_value(r.Beneish_M))
+    st.caption(f'Altman: {r.Altman_model} · {r.Altman_zone}; Beneish: {r.Beneish_status} (risk screen, not a probability of fraud)')
     flags=anomaly_flags(r.to_dict())
     if flags:
         st.warning('Data quality review: '+', '.join(x['issue'] for x in flags[:5]))
@@ -320,7 +310,7 @@ elif page=='Company Fundamentals':
                              'Sector median':r[m+'_sector_median'],
                              'Sector percentile':r[m+'_sector_pct'],
                              'Industry percentile':r[m+'_industry_pct'],
-                             'Sector observations':r[m+'_sector_count']} for m in ['GPA','BM','STA','ROA','CFOA']])
+                             'Sector observations':r[m+'_sector_count']} for m in ['GPA','BM','STA','ROA','CFOA','SNOA','Beneish_M']])
         st.dataframe(peers,hide_index=True,use_container_width=True)
         observed=peers.loc[peers['Sector percentile'].notna()].copy()
         if len(observed):
@@ -336,7 +326,11 @@ elif page=='Company Fundamentals':
         st.dataframe(pd.DataFrame({'Source field':fields,'Value':[money(r.get(k,np.nan)) if k in {'revenue','cost_of_revenue','gross_profit','total_assets','common_equity','market_cap','net_income','operating_cash_flow','prior_revenue','prior_net_income','prior_operating_cash_flow'} else str(r.get(k,'')) for k in fields]}),
                      hide_index=True,use_container_width=True)
         st.caption('Financial line item definitions can differ across issuers. Verify against SEC/issuer filings.')
-    st.info('SNOA, Beneish PMAN and Altman Z are awaiting the exact ACCT 3343 methodology; no proxy scores are displayed.')
+    with st.expander('Advanced models · required data and exact formulas'):
+        st.markdown('**SNOA** = [(Total assets − cash) − (Total assets − ST debt − LT debt − minority interest − preferred equity − common equity)] / Total assets. All named source components are required; missing is NOT treated as zero.')
+        st.markdown('**Altman**: Original public-manufacturer Z or non-manufacturer Z double-prime, according to business classification. Banks and REITs are N/A. The manufacturer form uses CURRENT market capitalization against annual statement figures; treat its score as a screening signal, not a historical backtest.')
+        st.markdown('**Beneish**: Eight-variable 1999 M-score, with an adjustable -1.78 screening threshold. Net income is used as a flagged proxy for continuing-operations income in TATA; no calibrated manipulation probability is claimed.')
+        st.caption('Every model shows N/A unless the required Yahoo financial inputs are present. Sub-industry model assignment warrants analyst review.')
     st.markdown(f'[Review {ticker} financial statements at Yahoo Finance](https://finance.yahoo.com/quote/{ticker}/financials/)')
 
 else:
@@ -349,7 +343,7 @@ else:
         numeric_table(buys.head(10),['ticker','name','GPA','BM','BUY_score'])
     with rcol:
         st.markdown('##### SELL watchlist · Earnings Quality')
-        numeric_table(sells.head(10),['ticker','name','STA','STA_sector_pct'])
+        numeric_table(sells.head(10),['ticker','name','STA','SNOA','Beneish_M','Altman_Z','SELL_flag_count'])
     if view.empty:
         st.info('No companies match the current universe filters.')
         st.stop()
