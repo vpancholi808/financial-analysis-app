@@ -60,10 +60,10 @@ def cached_audit(raw_df,members_df):
     """Same audit_table output, cached so slider moves do not re-run the full audit."""
     return audit_table(raw_df,members_df)
 
-SNOA_NOTE=("Net operating assets (SNOA) needs total assets, cash, short- and long-term debt and total liabilities. "
-           "When Yahoo omits the minority-interest or preferred-equity line, their combined value is taken from the "
-           "balance sheet itself (assets − liabilities − common equity), which gives the identical course formula. "
-           "If a required line is missing, SNOA shows as — (never treated as zero) and its risk check is n/a.")
+SNOA_NOTE=("Net operating assets (SNOA) needs total assets, cash and total liabilities. When Yahoo omits the "
+           "minority-interest or preferred-equity line, their combined value is taken from the balance sheet "
+           "(assets − liabilities − common equity), which gives the identical course formula. A debt line Yahoo does "
+           "not report is left out of the formula and the value is labelled \"partial inputs\".")
 
 def altman_short(model):
     m=str(model)
@@ -450,6 +450,8 @@ elif page=="Company Profile":
     st.caption(f"Grades for accruals, net operating assets and the M-score are inverted so ▲ Strong always means favourable "
                f"(lower raw value than peers). Beneish screen cutoff: {beneish:.2f}. — = not available.")
     if pd.isna(r.SNOA):st.caption(SNOA_NOTE)
+    elif str(r.get("SNOA_basis","")).startswith("Partial"):
+        st.caption(f"Net operating assets (SNOA) uses partial inputs: {str(r.SNOA_basis).split(': ',1)[1]}.")
     with st.expander("What do these metrics mean?"):
         for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M","Altman_Z"]:
             m=METRICS[key];st.markdown(f"**{m.label}** — {m.help} *{m.direction}.*")

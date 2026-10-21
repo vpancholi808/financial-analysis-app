@@ -45,6 +45,7 @@ BENEISH_BOUNDS=dict(DSRI=(0.2,4.0),GMI=(0.2,4.0),AQI=(0.2,4.0),SGI=(0.3,3.0),
                     DEPI=(0.3,3.0),SGAI=(0.3,3.0),LVGI=(0.3,3.0),TATA=(-0.5,0.5))
 SNOA_COURSE="Course formula"
 SNOA_IDENTITY="Balance-sheet identity (MI + PE = TA − TL − CE)"
+SNOA_PARTIAL_PREFIX="Partial inputs: "
 
 def get(row, key):
     try:
@@ -65,22 +66,40 @@ def snoa_with_basis(row):
 
     The course form is used whenever every line is reported. Otherwise the
     combined MI + PE is taken from the balance sheet itself (TA - TL - CE), so
-    operating liabilities reduce to TL - STD - LTD; nothing is assumed zero.
+    operating liabilities reduce to TL - STD - LTD. A debt line that Yahoo does
+    not report is left out of the formula (contributes nothing) and the basis
+    names it, so partial-input values are always visible as such. Without total
+    liabilities, unreported minority-interest/preferred lines are left out the
+    same way. Total assets, cash and common equity or total liabilities remain
+    required.
     """
     a=get(row,"total_assets");cash=get(row,"cash_and_equivalents")
     st=get(row,"short_term_debt");lt=get(row,"long_term_debt")
     mi=get(row,"minority_interest");pref=get(row,"preferred_equity")
     common=get(row,"common_equity");tl=get(row,"total_liabilities")
-    if not np.isfinite(a) or a<=0:return np.nan,"Unavailable"
-    if not all(np.isfinite(x) for x in [cash,st,lt]):return np.nan,"Unavailable"
+    if not np.isfinite(a) or a<=0 or not np.isfinite(cash):return np.nan,"Unavailable"
+    left_out=[name for name,v in (("short-term debt",st),("long-term debt",lt)) if not np.isfinite(v)]
+    st=st if np.isfinite(st) else 0.0
+    lt=lt if np.isfinite(lt) else 0.0
     operating_assets=a-cash
     if all(np.isfinite(x) for x in [mi,pref,common]):
         operating_liabilities=a-st-lt-mi-pref-common
-        return ratio(operating_assets-operating_liabilities,a),SNOA_COURSE
-    if np.isfinite(tl):
+        basis=SNOA_COURSE
+    elif np.isfinite(tl):
         operating_liabilities=tl-st-lt
-        return ratio(operating_assets-operating_liabilities,a),SNOA_IDENTITY
-    return np.nan,"Unavailable"
+        basis=SNOA_IDENTITY
+    elif np.isfinite(common):
+        # No total liabilities either: course form with the unreported
+        # minority-interest / preferred lines left out.
+        left_out+=[name for name,v in (("minority interest",mi),("preferred equity",pref)) if not np.isfinite(v)]
+        operating_liabilities=(a-st-lt-(mi if np.isfinite(mi) else 0.0)
+                               -(pref if np.isfinite(pref) else 0.0)-common)
+        basis=SNOA_COURSE
+    else:
+        return np.nan,"Unavailable"
+    if left_out:
+        basis=SNOA_PARTIAL_PREFIX+", ".join(left_out)+" not reported, left out"
+    return ratio(operating_assets-operating_liabilities,a),basis
 
 def snoa(row):
     return snoa_with_basis(row)[0]

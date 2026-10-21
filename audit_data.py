@@ -65,10 +65,15 @@ def audit_table(raw: pd.DataFrame, members: pd.DataFrame | None = None,
             raw_gp=r.get("gross_profit_reported",np.nan)
         cash,std,ltd,tl=(r.get(k,np.nan) for k in ("cash_and_equivalents","short_term_debt","long_term_debt","total_liabilities"))
         mi,pe,ce=(r.get(k,np.nan) for k in ("minority_interest","preferred_equity","common_equity"))
-        if pd.notna(cash) and pd.notna(std) and pd.notna(ltd) and pd.notna(mi) and pd.notna(pe) and pd.notna(ce):
-            snoa_exp=((a-cash)-(a-std-ltd-mi-pe-ce))/a
-        elif pd.notna(cash) and pd.notna(std) and pd.notna(ltd) and pd.notna(tl):
-            snoa_exp=((a-cash)-(tl-std-ltd))/a
+        z=lambda v:0.0 if pd.isna(v) else v   # unreported lines are left out, as in the model
+        if pd.isna(cash):
+            snoa_exp=np.nan
+        elif pd.notna(mi) and pd.notna(pe) and pd.notna(ce):
+            snoa_exp=((a-cash)-(a-z(std)-z(ltd)-mi-pe-ce))/a
+        elif pd.notna(tl):
+            snoa_exp=((a-cash)-(tl-z(std)-z(ltd)))/a
+        elif pd.notna(ce):
+            snoa_exp=((a-cash)-(a-z(std)-z(ltd)-z(mi)-z(pe)-ce))/a
         else:
             snoa_exp=np.nan
         expected={

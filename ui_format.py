@@ -261,9 +261,11 @@ def risk_checks(row, settings=None) -> list[dict]:
 
     snoa_v = get("SNOA")
     label, tone = check_status(get("SNOA_risk_flag"), snoa_v, applicable)
-    detail = ("Needs total assets, cash, short- and long-term debt and total liabilities — not all reported." if tone == NA else
+    basis = str(get("SNOA_basis", "") or "")
+    detail = ("Needs total assets, cash and total liabilities — not all reported." if tone == NA else
               f"Net operating assets are {fmt_pct(snoa_v)} of assets — {ordinal(get('SNOA_sector_pct'))} percentile "
-              f"(flag at ≥ {snoa_pct:.0f}th).")
+              f"(flag at ≥ {snoa_pct:.0f}th)."
+              + (" Partial inputs: " + basis.split(": ", 1)[1] + "." if basis.startswith("Partial") else ""))
     out.append(dict(check="Balance sheet not bloated", label=label, tone=tone, detail=detail))
 
     m = get("Beneish_M")

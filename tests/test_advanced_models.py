@@ -35,12 +35,25 @@ def test_snoa_does_not_invent_zero_minority_interest():
     value,basis=snoa_with_basis(sample(minority_interest=np.nan))
     assert value==pytest.approx(.40)
     assert basis==SNOA_IDENTITY
-    # Substituting MI = 0 into the course formula would give 0.41 instead.
+    # The balance-sheet value (MI + PE = 0) is used, not the reported PE line with MI = 0 (0.41).
     assert value!=pytest.approx(snoa(sample(minority_interest=0.)))
 
-def test_snoa_missing_when_liabilities_also_missing():
-    assert math.isnan(snoa(sample(minority_interest=np.nan,total_liabilities=np.nan)))
-    assert math.isnan(snoa(sample(short_term_debt=np.nan)))
+def test_snoa_leaves_out_unreported_debt_and_labels_it():
+    # Short-term debt not reported: OL = 1000 - 0 - 150 - 20 - 10 - 300 = 520 -> (900 - 520) / 1000
+    value,basis=snoa_with_basis(sample(short_term_debt=np.nan))
+    assert value==pytest.approx(.38)
+    assert basis.startswith("Partial inputs") and "short-term debt" in basis
+
+def test_snoa_without_total_liabilities_leaves_out_unreported_equity_lines():
+    # Course form with MI left out: OL = 1000 - 50 - 150 - 10 - 300 = 490 -> (900 - 490) / 1000
+    value,basis=snoa_with_basis(sample(minority_interest=np.nan,total_liabilities=np.nan))
+    assert value==pytest.approx(.41)
+    assert "minority interest" in basis
+
+def test_snoa_still_requires_assets_cash_and_liabilities_or_equity():
+    assert math.isnan(snoa(sample(cash_and_equivalents=np.nan)))
+    assert math.isnan(snoa(sample(total_assets=np.nan)))
+    assert math.isnan(snoa(sample(minority_interest=np.nan,total_liabilities=np.nan,common_equity=np.nan)))
 
 def test_snoa_identity_matches_course_formula_on_consistent_balance_sheet():
     # A balance sheet where TL = TA - CE - MI - PE (Yahoo's liabilities net of MI).
