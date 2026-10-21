@@ -1,70 +1,77 @@
-# Financial Analysis Terminal — ACCT 3343
+# Financial Analysis Terminal | ACCT 3343
 
-A Bloomberg-inspired **Streamlit equity research platform** with **real Yahoo Finance financial statements**, sector-relative screening, transparent accounting formulas, and an evidence-based investment research desk. This is a **work in progress**, not a complete ACCT 3343 submission.
+A Bloomberg-inspired financial accounting screener for the current **S&P 500 constituent listings**. The public Streamlit interface draws saved, actual company financial-statement figures from **Yahoo Finance through yfinance** and tracks missing values and anomalies. This remains a **research and university-assignment project**, not an independently audited financial-data vendor or verified trading model.
 
-## Live website
+**Website:** https://financial-analysis-app-cpf2jt6lfpqxjfpik7a7bs.streamlit.app/
 
-https://financial-analysis-app-cpf2jt6lfpqxjfpik7a7bs.streamlit.app/
+## Assignment grading alignment (20 points)
 
-The Phase-1 redesign **removes the fictitious DEMO company generator entirely**. An empty dashboard is preferable to presenting invented financial figures as real.
+| Category | Points | How the application supports it |
+| --- | ---: | --- |
+| Financial analysis and methodology | 10 | Reproducible ratios, independent BUY versus SELL criteria, sector-appropriate models, accounting anomalies, source disclosures, and separately reviewed company recommendations |
+| Interactivity | 6 | S&P sector and industry filters, minimum capitalization, GPA/B-M thresholds and weights, risk flag thresholds, adjustable minimum risk signal count |
+| Functionality and presentation | 4 | Streamlit multipage navigation, Plotly sector and factor charts, financial trends, research report downloads, audit evidence |
 
-## Quick test with real companies
+**Important:** A BUY/SELL *screen candidate* is not automatically a well-supported investment recommendation. The research desk requires a written case with actual filings, valuation, catalysts and risks before submission.
 
-1. In the sidebar, choose **Live Yahoo test**.
-2. Enter tickers such as `AAPL, MSFT, NVDA` (maximum 15 per request).
-3. Click **Fetch real financials**. The app uses `yfinance.Ticker(...).income_stmt`, `.balance_sheet`, `.cashflow` and `.info` for the latest **matched fiscal year**.
-4. Open **Company Fundamentals** and **Investment Research** to examine annual figures, source metadata, calculated GPA / B/M / STA, risks and a downloadable investment-research draft.
-5. If Yahoo blocks/rate-limits the request or financial statements are incomplete, the app shows missing-data diagnostics instead of substituting dummy values. Source queries are cached for six hours within the app service.
+## Data provenance and scope
 
-**Interpretation:** An initial three-stock test cannot produce defensible sector percentiles: the default is a minimum of 10 eligible companies per sector. No BUY/SELL flag is not the same as a negative investment recommendation.
+- S&P 500 ticker membership: https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv
+- Actual annual statement fields and market cap: yfinance Ticker `income_stmt`, `balance_sheet`, `cashflow`, and `info`.
+- A record requires a common latest fiscal-year date across all three statements. The previous annual period is also saved when available. Period-end dates returned by Yahoo are sometimes rounded to calendar month-end.
+- `universe.csv` is a frozen snapshot; no bulk Yahoo refresh is triggered when visitors open the app.
+- `.github/workflows/collect-universe.yml` refreshes missing companies and can update fields for advanced models. `sp500_constituents.csv`, `data_quality.csv`, and `collection_state.json` record coverage and discrepancies.
+- TSM (TSMC ADR), the separate 60-second pitch company, is excluded from recommendations. TSM is not a constituent of the US S&P 500 in the current constituent snapshot.
+- Absent financial inputs remain missing. **Never substitute zero for an undisclosed preference share, minority interest, debt, or earnings figure.**
 
-## Build the 500–1,000-company universe
+Market cap is current as of the quote snapshot; book equity and earnings are latest available historical annual statements. This **timing mismatch means B/M, some Altman variants and screen rankings are cross-sectional snapshots, not historical backtests**.
 
-Install Python dependencies in Google Colab or locally:
+## Accounting formulas and eligibility
 
-```bash
-pip install -r requirements.txt
-python build_universe.py --tickers AAPL MSFT NVDA --limit 3 --output real_test.csv
-python build_universe.py --limit 1000 --buffer 350 --pause 0.8 --resume --exclude YOUR_PITCH_TICKER --output universe.csv
-```
+| Metric | Implementation and boundaries |
+| --- | --- |
+| GPA | Gross profit / assets. Gross profit = annual revenue − annual cost of revenue when both exist; otherwise directly reported gross profit with source basis recorded |
+| B/M | Common book equity / market capitalization; requires positive equity/cap and matching financial/market currencies |
+| STA | (Net income − operating cash flow) / assets |
+| ROA | Net income / assets |
+| CFOA | Operating cash flow / assets |
+| SNOA | [(Assets − cash) − (Assets − short-term debt − long-term debt − minority interest − preferred equity − common equity)] / assets. Strictly requires every field, per course definition |
+| Altman Z | Original public-manufacturer: 1.2 WC/A + 1.4 RE/A + 3.3 EBIT/A + 0.6 Market equity/L + Revenue/A. Thresholds: distress below 1.81, grey 1.81–2.99, lower distress signal above 2.99 |
+| Altman Z double-prime | Non-manufacturer: 6.56 WC/A + 3.26 RE/A + 6.72 EBIT/A + 1.05 Book equity/L. Thresholds: distress below 1.1, grey 1.1–2.6, lower distress signal above 2.6 |
+| Beneish M-score | Published eight-variable model using DSRI, GMI, AQI, SGI, DEPI, SGAI, TATA, LVGI. Default warning threshold > −1.78; not a calibrated probability of fraud. Net income is a documented proxy where continuing-operations net income is unavailable |
 
-The script independently searches a US-region/NYSE/NASDAQ equity universe (proxy, **not** the complete US-listed market), collects annual statements, matches fiscal dates, retains missing inputs and saves a snapshot. Collection of 500–1,000 individual reports may take considerable time; Yahoo requests may throttle or fail, so use `--resume`. Check large sample coverage, company types, duplications, currencies, and all formula inputs against original filings. **Do not push partial/inaccurate `universe.csv` as the finished assignment**.
+Financials and REITs are excluded from the industrial screening methods. The Altman assignment to public manufacturer versus operating-company non-manufacturer is based on a reviewable subindustry keyword rule; specialists should confirm questionable classifications. Full Beneish eight-variable calculation is **not** asserted if any source field is absent; a Beneish score does not prove wrongdoing.
 
-After committing an adequately validated `universe.csv` to GitHub, the app will automatically default to **Saved real universe.csv**, avoiding hundreds of Yahoo requests during every visitor session.
+- Altman variants: https://en.wikipedia.org/wiki/Altman_Z-score
+- Beneish explanation and coefficients: https://www.aaii.com/journal/article/83450-detecting-earnings-manipulation-with-the-m-score
 
-## Calculated models (Phase 1)
+## Screening and research
 
-- **GPA:** `(revenue - cost of revenue) / total assets`
-- **B/M:** `positive common equity / market cap` only if market/statement currencies match
-- **STA:** `(net income - operating cash flow) / total assets`
-- Supporting **ROA**, **CFOA**, current vs. matched prior-year revenue and cash-flow charts
-- Sector-relative median/mean/percentile statistics from full eligible universe; filters do not rebase rankings
-- **BUY** = sector percentiles of GPA and B/M meeting separately adjusted thresholds plus a disclosed weighted composite
-- **SELL** = independent positive-STA percentile risk flag; not the inverse of BUY
-- Financials and Real Estate are present but deliberately excluded from incompatible industrial-company ratios
+BUY candidates require sufficient and above-threshold **GPA and B/M sector percentiles**, plus the adjusted weighted BUY score. SELL risk candidates are derived independently from: high positive STA percentile; high SNOA sector percentile; Beneish M-score above the model threshold; or Altman model-specific distress. Minimum distinct SELL signals is adjustable. Overlapping signals remain visible as conflicts.
 
-Not yet implemented: **SNOA, Beneish PMAN, Altman Z**. The course's definitions, coefficients and variant rules are necessary before reliable implementation. Never silently substitute variants.
+The investment research desk distinguishes actual financial facts, reported abnormalities, unavailable model inputs, source fiscal periods, and **analyst-written thesis and conclusion**. It does not assert a target return or fabricate a BUY/SHORT investment case.
 
-## Investment Research Desk
-
-Choose a company to examine accounting evidence, cash-flow warnings, sector comparatives, missing inputs and an editable human-reviewed investment case. Download the report as Markdown. Template text is **not an approved recommendation**: manually verify SEC filings, valuation, forward estimates, catalysts, risks and management disclosures before submission.
-
-## Testing and deployment
+## Reproducible validation
 
 ```bash
 pip install -r requirements.txt pytest
-pytest -q
+python -m pytest -q
+python audit_data.py
 streamlit run app.py
 ```
 
-The GitHub workflow `.github/workflows/validation.yml` runs offline accounting tests **and separately attempts a live Yahoo Finance retrieval** for `AAPL`, `MSFT`, and `NVDA`, saving an artifact if possible. The real-data step can fail due to Yahoo restrictions even when the code is correct; inspect workflow logs before treating it as verified.
+- `.github/workflows/financial-audit.yml`: automated unit/integration tests plus a universe-wide independent arithmetic and completeness audit, keeping an `audit_summary.json` and `metric_audit.csv` artifact.
+- `tests/test_advanced_models.py`: hand-reconciled, original definitions and missing-data guards.
+- `tests/test_sec_spotchecks.py`: anchored annual FY2025 Apple and FY2026 NVIDIA numbers compared with actual annual SEC 10-K figures.
+- `tests/test_streamlit_app.py`: page-load checks for Stock Screener, Company Fundamentals and Investment Research.
+- `audit_data.py`: coverage counts, individual missing fields, currency mismatches, statement staleness, negative/inconsistent assets and common-versus-total-equity reconciliation flags.
 
-Streamlit Community Cloud deployment: repository `vpancholi808/financial-analysis-app`, branch `main`, entrypoint `app.py`.
+**Limitations:** Automatic ratio verification is necessary but not equivalent to independent external audit of 500+ sets of source financial statements. Flags may reflect legitimate minority interests or issuer-specific reporting conventions. Mark material discrepancies for filing review instead of silently correcting them.
 
-## Assignment remaining
+## Before grading submission
 
-1. Collect and validate **500+ real securities** (or approved single-industry alternative).
-2. Add your 60-second pitch company ticker to `excluded_tickers` in `config.json`.
-3. Upload Chapter 3–4 notes to confirm SNOA / Beneish / Altman exact specifications.
-4. Manually cross-check one company for each mandatory model.
-5. Write genuine company-specific investment cases; use research desk downloads as working papers.
+1. Confirm latest S&P 500 membership and coverage, with all uncollected/invalid tickers identified.
+2. Review anomalies and sample filings from each sector; resolve source differences.
+3. Validate any course-specific definition differences for Altman, Beneish and SNOA.
+4. Write, source and defend at least one strong long and one short/avoid case, including valuation and alternative explanations.
+5. Ensure charts, controls, downloadable research and GitHub Actions work on the live Streamlit URL.
