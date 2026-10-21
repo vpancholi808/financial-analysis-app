@@ -1,0 +1,42 @@
+name: Audit financial models and S&P 500 data
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'advanced_models.py'
+      - 'finance_models.py'
+      - 'build_universe.py'
+      - 'audit_data.py'
+      - 'tests/**'
+      - '.github/workflows/financial-audit.yml'
+  schedule:
+    - cron: '18 6 * * *'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt pytest
+      - name: Compile and test financial formulas
+        run: |
+          python -m compileall -q app.py advanced_models.py finance_models.py build_universe.py audit_data.py
+          python -m pytest -q
+      - name: Audit entire frozen S&P 500 universe
+        run: python audit_data.py
+      - name: Keep reproducible audit reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: accounting-accuracy-audit
+          path: |
+            audit_summary.json
+            metric_audit.csv
+          if-no-files-found: warn
