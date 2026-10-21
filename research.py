@@ -62,7 +62,28 @@ def evidence(row):
         good.append(f"Reported fiscal-year revenue change: {metric(gr, True)} versus prior matched annual statement.")
     else:
         gaps.append('Matched prior-year revenue for a reliable growth comparison.')
-    gaps.append('Course-verified SNOA, Beneish PMAN, Altman Z and filing-based diligence.')
+    if pd.notna(r.get('SNOA')):
+        if pd.notna(r.get('SNOA_sector_pct')) and r['SNOA_sector_pct'] >= 80:
+            risks.append(f"Scaled net operating assets {metric(r['SNOA'],True)} ({r['SNOA_sector_pct']:.0f}th percentile). Investigate persistent high net operating assets.")
+        else:
+            good.append(f"Scaled net operating assets {metric(r['SNOA'],True)} with complete operating-asset and liability inputs.")
+    else:
+        gaps.append('SNOA unavailable: require short/long debt, cash, minority interest, preferred equity, common equity and assets; absent values are not assumed zero.')
+    if pd.notna(r.get('Beneish_M')):
+        if r['Beneish_M'] > -1.78:
+            risks.append(f"Beneish eight-variable M-score {metric(r['Beneish_M'])} exceeds -1.78 screening cutoff; this does NOT demonstrate fraud.")
+        else:
+            good.append(f"Beneish M-score {metric(r['Beneish_M'])} below -1.78 screening cutoff; this does not guarantee accurate reporting.")
+    else:
+        gaps.append('Eight-variable Beneish M-score unavailable because one or more two-year financial inputs are missing or inapplicable.')
+    if pd.notna(r.get('Altman_Z')):
+        label=str(r.get('Altman_model',''))
+        zone=str(r.get('Altman_zone',''))
+        item=f"Altman {label} score {metric(r['Altman_Z'])}: {zone}. Business-type-dependent distress screening only."
+        (risks if zone == 'Distress' else good).append(item)
+    else:
+        gaps.append('Altman Z/Z double-prime unavailable: missing model-specific inputs or an excluded financial/REIT sector.')
+    gaps.append('SEC/issuer filing checks, earnings quality, valuation and catalyst diligence are still required.')
     gaps.append('Price target, forward earnings and catalysts are not modeled; investment return cannot be inferred.')
     return {'facts':good, 'risks':risks, 'missing':gaps, 'revenue_growth':gr}
 
@@ -97,7 +118,7 @@ def research_report(row, analyst_note=''):
                  f'- Common equity: {readable_amount(r.get("common_equity"),currency)}',
                  f'- Market capitalization: {readable_amount(r.get("market_cap"),str(r.get("market_currency") or "USD"))}',
                  '', '## Accounting risks']
-    sections += [f'- {v}' for v in ev['risks']] or ['- No quantified STA red flag in the available indicators; this does not prove absence of risk.']
+    sections += [f'- {v}' for v in ev['risks']] or ['- No quantified accounting red flag in the available indicators; this does not prove absence of risk.']
     sections += ['', '## Missing evidence and model limitations']
     sections += [f'- {v}' for v in ev['missing']]
     sections += ['', '## Analyst investment conclusion (human review required)',
