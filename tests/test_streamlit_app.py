@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "universe.csv"
 
 @pytest.mark.parametrize("page", [
-    "Stock Screener", "Company Fundamentals", "Investment Research",
+    "S&P 500 Screener", "Company Overview", "Research Desk",
 ])
 def test_streamlit_render_with_saved_data(page):
     from streamlit.testing.v1 import AppTest
