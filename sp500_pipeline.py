@@ -160,36 +160,54 @@ def sec_due(symbol, row, last_checks, today):
     prev = str(last_checks.get(symbol, ""))
     if "|" not in prev:
         return True
-    when, fye = prev.split("|", 1)
+    when, fye, *flag = prev.split("|")
+    age = (pd.Timestamp(today) - pd.Timestamp(when)).days
+    if flag and flag[0] == "failed":
+        return age >= 1                     # retry a failed lookup the next day
     if fye != str(row.get("fiscal_year_end")):
         return True
-    age = (pd.Timestamp(today) - pd.Timestamp(when)).days
     report_due = needs_sec({k: 1.0 for k in TRIGGER_FIELDS} | {"fiscal_year_end": row.get("fiscal_year_end")}, today=today)
     return age >= (1 if report_due else SEC_RECHECK_DAYS)
 
-def sec_pass(rows, last_checks, today=None, client=None, limit=250):
+def sec_pass(rows, last_checks, today=None, client=None, limit=250, status=None, abort_after=5):
     """Fill Yahoo blanks / supply newer fiscal years from SEC 10-K data.
-    Returns a list of log lines; rows and last_checks are updated in place."""
+    Returns log lines; rows, last_checks and status are updated in place. If
+    the first `abort_after` lookups all fail (e.g. SEC refusing the requests),
+    the pass stops and the reason is recorded in status."""
     today = str(pd.Timestamp(today or datetime.now(timezone.utc).date()).date())
+    status = {} if status is None else status
+    status.update(date=today, due=0, filled=0, nothing_to_fill=0, failed=0, no_cik=0, last_error="", aborted=False)
     due = [s for s, r in rows.items() if sec_due(s, r, last_checks, today)][:limit]
+    status["due"] = len(due)
     log = []
     if not due:
         return log
     client = client or SecClient()
-    for symbol in due:
+    status["contact_set"] = bool(getattr(client, "contact_set", True))
+    for i, symbol in enumerate(due):
         try:
             facts = client.company_facts(symbol)
         except Exception as exc:
-            log.append(f"SEC FETCH FAILED {symbol} {type(exc).__name__} {str(exc)[:120]}")
+            status["failed"] += 1
+            status["last_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            log.append(f"SEC FETCH FAILED {symbol} {status['last_error']}")
+            last_checks[symbol] = f"{today}|{rows[symbol].get('fiscal_year_end')}|failed"
+            if status["failed"] == i + 1 >= abort_after:
+                status["aborted"] = True
+                log.append(f"SEC PASS STOPPED after {abort_after} failed lookups in a row: {status['last_error']}")
+                break
             continue
         if facts is None:
+            status["no_cik"] += 1
             log.append(f"SEC NO CIK {symbol}")
         else:
             updated, filled, note = fill_from_sec(rows[symbol], facts)
             if filled:
                 rows[symbol] = updated
+                status["filled"] += 1
                 log.append(f"SEC FILLED {symbol} {','.join(filled)} ({note})")
             else:
+                status["nothing_to_fill"] += 1
                 log.append(f"SEC NOTHING TO FILL {symbol} ({note})")
         last_checks[symbol] = f"{today}|{rows[symbol].get('fiscal_year_end')}"
     return log
@@ -258,9 +276,14 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
             print("FETCH FAILED",symbol,type(exc).__name__,str(exc)[:150],flush=True)
         if pause: time.sleep(pause)
     sec_checks = {str(k):str(v) for k,v in prior.get("sec_last_check",{}).items()}
+    sec_status = dict(prior.get("sec_status",{}))
     if use_sec:
-        for line in sec_pass(rows, sec_checks):
-            print(line, flush=True)
+        try:
+            for line in sec_pass(rows, sec_checks, status=sec_status):
+                print(line, flush=True)
+        except Exception as exc:   # never lose Yahoo data because SEC is unavailable
+            sec_status.update(aborted=True, last_error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            print("SEC PASS ERROR", sec_status["last_error"], flush=True)
     ordered = [rows[s] for s in members_map if s in rows]
     good = pd.DataFrame(ordered,columns=UNIVERSE_COLUMNS)
     good.to_csv(UNIVERSE,index=False)
@@ -284,6 +307,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
         "schema_refresh_attempts":refresh_attempts,
         "stale_refresh_last_attempt":stale_last,
         "sec_last_check":sec_checks,
+        "sec_status":sec_status,
         "schema_refresh_pending":sum(s in rows and refresh_attempts.get(s,0)==0 for s in members_map),
         "attempted_total":sum(attempts.values()),"batch_size":batch_size,
         "quality_warning_count":sum(a["severity"]=="warning" for a in audit),

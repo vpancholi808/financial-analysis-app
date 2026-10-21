@@ -30,8 +30,8 @@ jobs:
       - name: Fetch all remaining S&P 500 constituents and audit abnormalities
         env:
           # SEC asks automated clients to identify themselves with a contact address.
-          # Set a repository variable SEC_USER_AGENT, e.g. "Your Name your@email.com".
-          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}
+          # Set a repository variable (or secret) SEC_USER_AGENT, e.g. "Your Name your@email.com".
+          SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT || secrets.SEC_USER_AGENT }}
         run: python sp500_pipeline.py --batch-size 510 --retry-cap 3 --pause 0.7
       - name: Validate output against constituent membership
         run: |
