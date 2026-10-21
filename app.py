@@ -1,373 +1,272 @@
-"""Financial Analysis App v2: real Yahoo financials + hybrid research interface."""
-from __future__ import annotations
-import json
+"""S&P 500 Research Terminal: simple overview, screening and evidence-based research."""
 from pathlib import Path
-from datetime import datetime, timezone
+import json
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-from finance_models import (GICS_SECTORS, ScreenSettings, prepare, classify,
-                            scope_filter, validate_universe)
-from research import evidence, metric, research_report, growth
-from build_universe import extract_company
-from sp500_pipeline import anomaly_flags
+from finance_models import GICS_SECTORS, ScreenSettings, prepare, classify, scope_filter
+from research_workbench import describe, scenario, report, money, pct, n
 from audit_data import audit_table
 
-ROOT = Path(__file__).resolve().parent
-st.set_page_config(page_title='Financial Analysis | Equity Research', page_icon='📈',
-                   layout='wide', initial_sidebar_state='expanded')
-
-st.markdown('''<style>
-.block-container {padding-top:1.15rem; padding-bottom:2rem; max-width:1550px;}
-h1 {letter-spacing:-.045em; font-size:2.25rem!important;}
-h2 {letter-spacing:-.025em; font-size:1.45rem!important;}
-h3 {font-size:1.15rem!important;}
-[data-testid="stMetric"] {background:#172636; border:1px solid #2B4054; border-radius:11px; padding:14px 18px;}
-[data-testid="stMetricLabel"] {color:#A2B2C4;}
-[data-testid="stSidebar"] {border-right:1px solid #2B4054;background:#101E2C;}
-[data-testid="stDataFrame"] {border:1px solid #30465A;border-radius:10px;}
-[data-testid="stAlert"] {border-radius:10px;}
-a {color:#51D1BF!important;}
-.app-kicker {font-size:.78rem;letter-spacing:.16em;color:#79CABA;font-weight:650;}
-.app-sub {font-size:.92rem;color:#91A7BC;margin-top:-.5rem;}
-.panel-intro {background:#172636; padding:14px 18px; border:1px solid #2B4054;
- border-radius:10px; color:#BCCBDD; font-size:.94rem;}
-</style>''', unsafe_allow_html=True)
+ROOT=Path(__file__).resolve().parent
+st.set_page_config(page_title="S&P 500 | Financial Research",page_icon="📈",layout="wide",
+                   initial_sidebar_state="expanded")
+st.markdown("""<style>
+.block-container{max-width:1420px;padding-top:1rem;padding-bottom:2rem}
+h1{font-size:2.15rem!important;letter-spacing:-.04em}
+h2{font-size:1.5rem!important}
+[data-testid="stSidebar"]{border-right:1px solid #344453}
+[data-testid="stMetric"]{background:#172536;border:1px solid #32445a;border-radius:10px;padding:13px 16px}
+[data-testid="stMetricLabel"]{font-size:.78rem}
+[data-testid="stDataFrame"]{border-radius:9px}
+div[data-testid="stAlert"]{border-radius:9px}
+.small-note{color:#9bacbd;font-size:.82rem}
+</style>""",unsafe_allow_html=True)
 
 @st.cache_data(ttl=1800)
-def saved_universe():
-    file = ROOT / 'universe.csv'
-    return pd.read_csv(file) if file.exists() else pd.DataFrame()
+def load():
+    data=pd.read_csv(ROOT/"universe.csv")
+    members=pd.read_csv(ROOT/"sp500_constituents.csv")
+    data=data.loc[data.ticker.astype(str).isin(set(members.ticker))].copy()
+    config=json.loads((ROOT/"config.json").read_text())
+    banned=set(config.get("excluded_tickers",[]))
+    return data.loc[~data.ticker.isin(banned)].copy(),members
 
-@st.cache_data
-def load_config():
-    try:
-        return json.loads((ROOT / 'config.json').read_text())
-    except (OSError, json.JSONDecodeError):
-        return {}
+@st.cache_data(ttl=1800)
+def calculate(df):
+    return prepare(df,min_sector_n=10,min_industry_n=10)
 
-def money(n):
-    if pd.isna(n): return 'N/A'
-    x=abs(float(n))
-    val=(f'{x/1e12:,.2f}T' if x>=1e12 else
-         f'{x/1e9:,.2f}B' if x>=1e9 else
-         f'{x/1e6:,.2f}M' if x>=1e6 else
-         f'{x/1e3:,.1f}K' if x>=1e3 else f'{x:,.0f}')
-    return ('-' if n<0 else '')+'$'+val
-
-def fmt_value(v, pct=False):
-    return 'N/A' if pd.isna(v) else (f'{v*100:,.1f}%' if pct else f'{v:,.3f}')
-
-def numeric_table(df, cols, order_col=None):
+def cash_label(r,k):
+    return money(n(r,k),str(r.get("financial_currency") or "USD"))
+def style_chart(fig,height=None):
+    fig.update_layout(template="plotly_dark",paper_bgcolor="#0D1724",plot_bgcolor="#172536",
+                      margin=dict(l=8,r=12,b=16,t=52),font_size=12)
+    if height:fig.update_layout(height=height)
+    return fig
+def table(df,cols,label=None):
+    if label:st.subheader(label)
     if df.empty:
-        st.info('No companies meet these screening rules. Adjust the filters or load a larger universe.')
+        st.info("No qualifying companies. Adjust the filters.")
         return
-    view = df[cols].copy()
-    spec = {}
-    for key in ['GPA', 'BM', 'STA', 'ROA', 'CFOA', 'SNOA', 'Altman_Z', 'Beneish_M']:
-        if key in view: spec[key] = st.column_config.NumberColumn(key, format='%.3f')
-    for key in ['GPA_sector_pct', 'BM_sector_pct','STA_sector_pct','SNOA_sector_pct','BUY_score']:
-        if key in view: spec[key] = st.column_config.NumberColumn(key, format='%.1f')
-    if 'market_cap' in view:
-        view['market_cap']=view['market_cap'].map(money)
-        spec['market_cap']=st.column_config.TextColumn('Market Cap (USD)')
-    st.dataframe(view, use_container_width=True, hide_index=True, column_config=spec)
+    shown=df[cols].copy()
+    for key in ("market_cap","revenue","operating_cash_flow"):
+        if key in shown:shown[key]=shown[key].apply(lambda x:money(float(x)) if pd.notna(x) else "N/A")
+    st.dataframe(shown,hide_index=True,use_container_width=True,height=min(490,45+35*len(shown)))
 
-def ticker_selector(df, key):
-    names = {r.ticker: f'{r.ticker} · {r["name"]}' for _,r in df.iterrows()}
-    return st.selectbox('Choose company', sorted(names), format_func=lambda s:names[s], key=key)
-
-def company_source_line(r):
-    st.caption(f'Source: {r.get("data_source", "Unknown")}  ·  Fiscal year: {r.get("fiscal_year_end", "N/A")}  ·  Quote snapshot: {r.get("price_asof", "N/A")}  ·  Refreshed: {r.get("refreshed_at", "N/A")}')
-
-st.markdown('<div class="app-kicker">EQUITY RESEARCH WORKSTATION / ACCT 3343</div>', unsafe_allow_html=True)
-st.title('Financial Analysis Terminal')
-st.markdown('<div class="app-sub">Real financial statements · Independent BUY / SELL screening · Sector-relative evidence</div>', unsafe_allow_html=True)
-config=load_config()
-excluded=set(str(s).strip().upper() for s in config.get('excluded_tickers', []))
-
-@st.cache_data(ttl=90)
-def collection_state():
-    try: return json.loads((ROOT/'collection_state.json').read_text())
-    except (OSError, ValueError): return {}
-
-with st.sidebar:
-    st.markdown('### ◈ FINANCIAL ANALYSIS')
-    page=st.radio('Workspace',['Stock Screener','Company Fundamentals','Investment Research'])
-    st.divider()
-    st.markdown('#### Full US Equity Universe')
-    data=saved_universe()
-    state=collection_state()
-    members_path=ROOT/'sp500_constituents.csv'
-    member_count=0
-    if members_path.exists():
-        membership=pd.read_csv(members_path)
-        member_count=len(membership)
-        data=data.loc[data.ticker.astype(str).isin(set(membership.ticker))].copy()
-    else:
-        data=data.iloc[0:0].copy()
-    st.metric('S&P 500 statements imported',f'{len(data):,} / {member_count:,}' if member_count else 'Awaiting index list')
-    st.progress(min(1.0,len(data)/member_count) if member_count else 0.0)
-    st.caption('S&P 500 constituents · Yahoo Finance financials · TSM excluded')
-    if state:
-        st.caption(f"Imported {int(state.get('fetched_records',len(data))):,}; collection status: {state.get('status','unknown')}")
-    st.caption('Full-universe collection is managed through GitHub Actions.')
-
-if data.empty:
-    st.warning('S&P 500 financial collection has not published its first matched statements. Previous non-index stocks are hidden; no synthetic data is displayed.')
-    st.markdown('[Check collection workflow](https://github.com/vpancholi808/financial-analysis-app/actions)')
+try:
+    raw,members=load()
+except (OSError,ValueError,KeyError) as exc:
+    st.error("Financial statements are not available in this deployment. Verify the collection workflow.")
     st.stop()
-
-base=prepare(data, min_sector_n=10, min_industry_n=10)
+if raw.empty:
+    st.info("No usable S&P 500 financial statements have been saved yet.")
+    st.stop()
+base=calculate(raw)
 if base.empty:
-    st.error('The dataset has no eligible tickers.')
+    st.error("The saved financial dataset is empty after validation.")
     st.stop()
 
-@st.cache_data(ttl=1800,show_spinner=False)
-def completed_audit(source_data, source_members):
-    return audit_table(source_data,source_members)
-audit_issues,audit_summary=completed_audit(data,membership)
-
+st.markdown("### ◈ FINANCIAL ANALYSIS")
+st.caption("S&P 500 equity research · Financial statements: Yahoo Finance via yfinance")
 with st.sidebar:
-    st.markdown('#### Universe filters')
-    sector_options=[s for s in GICS_SECTORS if s in base.sector.unique()]
-    sectors=st.multiselect('GICS sectors',sector_options,default=sector_options)
-    industries=sorted(base.loc[base.sector.isin(sectors),'industry'].dropna().unique().tolist())
-    industry=st.selectbox('Industry',['All industries']+industries)
-    min_cap=st.number_input('Minimum market cap · USD billions',min_value=0.,value=0.,step=1.)
-    with st.expander('BUY factor thresholds',expanded=True):
-        gpa_pct=st.slider('GPA · sector percentile ≥',0,100,60,5)
-        bm_pct=st.slider('B/M · sector percentile ≥',0,100,60,5)
-        buy_score=st.slider('BUY composite score ≥',0,100,65,5)
-        gpa_weight=st.slider('Weight on GPA',0.,1.,.60,.05)
-    with st.expander('SELL earnings-quality rules',expanded=False):
-        sta_pct=st.slider('STA · sector percentile ≥',0,100,80,5)
-        sta_floor=st.slider('STA · absolute ratio >',0.,.5,0.,.01)
-        snoa_pct=st.slider('SNOA · sector percentile ≥',0,100,80,5)
-        beneish_cut=st.number_input('Beneish M-score screen cutoff',value=-1.78,step=.01)
-        min_flags=st.slider('Minimum distinct SELL warning signals',1,4,1)
-        st.caption('Signals: high STA, high SNOA, Beneish M-score, model-specific Altman distress. Missing inputs do not trigger a flag.')
+    st.title("Research Terminal")
+    page=st.radio("Navigate",["S&P 500 Screener","Company Overview","Research Desk"])
+    st.divider()
+    sectors=st.multiselect("Sector",sorted(base.sector.dropna().unique()),default=sorted(base.sector.dropna().unique()))
+    industries=sorted(base.loc[base.sector.isin(sectors),"industry"].dropna().unique())
+    industry=st.selectbox("Industry",["All industries"]+industries)
+    cap_min=st.number_input("Minimum market cap ($B)",min_value=0.,value=0.,step=5.)
+    with st.expander("Screening criteria"):
+        gpa=st.slider("Profitability percentile",0,100,60,5)
+        bm=st.slider("Book-to-market percentile",0,100,60,5)
+        score=st.slider("Minimum long screen score",0,100,65,5)
+        w=st.slider("Profitability weight",0.,1.,.6,.05)
+        sta=st.slider("Accruals risk percentile",0,100,80,5)
+        snoa=st.slider("SNOA risk percentile",0,100,80,5)
+        beneish=st.number_input("Beneish risk cutoff",value=-1.78,step=.01)
+        riskcount=st.slider("Minimum bearish indicators",1,4,2)
+    st.caption(f"Latest dataset: {len(base)} of {len(members)} S&P 500 listings")
+    with st.expander("Sources and methodology"):
+        st.write("Annual company statements are matched by fiscal year. Market cap is a more recent quote snapshot; ratios are cross-sectional, not point-in-time backtests.")
+        st.markdown("[Financial statements at Yahoo Finance](https://finance.yahoo.com/)")
+        st.markdown("[GitHub model and data audit](https://github.com/vpancholi808/financial-analysis-app)")
+settings=ScreenSettings(buy_gpa_pct=gpa,buy_bm_pct=bm,buy_score_min=score,buy_gpa_weight=w,
+                        sell_sta_pct=sta,sell_snoa_pct=snoa,sell_beneish_cutoff=beneish,sell_min_flags=riskcount)
+selected=scope_filter(base,sectors,industry,cap_min*1e9)
+view=classify(selected,settings)
+longs=view.loc[view.BUY_candidate].sort_values("BUY_score",ascending=False)
+shorts=view.loc[view.SELL_candidate].sort_values(["SELL_flag_count","STA"],ascending=[False,False])
 
-settings=ScreenSettings(buy_gpa_pct=gpa_pct,buy_bm_pct=bm_pct,buy_score_min=buy_score,
-                        buy_gpa_weight=gpa_weight,sell_sta_pct=sta_pct,sell_sta_floor=sta_floor,
-                        sell_snoa_pct=snoa_pct,sell_beneish_cutoff=beneish_cut,sell_min_flags=min_flags)
-filtered=scope_filter(base,sectors,industry,min_cap*1e9,excluded)
-view=classify(filtered,settings)
-buys=view.loc[view.BUY_candidate].sort_values('BUY_score',ascending=False)
-sells=view.loc[view.SELL_candidate].sort_values(['SELL_flag_count','STA'],ascending=[False,False])
+def choose_company(df,key):
+    if df.empty:st.info("No companies match your filters.");st.stop()
+    labels={str(r.ticker):f"{r.ticker}  ·  {r['name']}" for _,r in df.iterrows()}
+    return st.selectbox("Search a company",sorted(labels),format_func=lambda s:labels[s],key=key)
 
-status='S&P 500 · SAVED REAL YAHOO FINANCIALS'
-st.caption(f'{status} · {len(base)} fetched company records · {len(filtered)} shown after filters · no synthetic securities')
-if 'TSM' not in excluded:
-    st.error('TSM must be excluded in config.json.')
-if len(base)<member_count:
-    st.warning(f'S&P 500 coverage: {len(base):,} of {member_count:,} constituent listings ({len(base)/member_count:.1%}). Missing statements are not scored. Screen rankings are provisional until coverage is sufficient.')
-
-if page=='Stock Screener':
-    col1,col2,col3,col4=st.columns(4)
-    col1.metric('Companies screened',len(view))
-    col2.metric('BUY candidates',len(buys))
-    col3.metric('SELL candidates',len(sells))
-    col4.metric('Conflicting signals',int(view.conflicting_signals.sum()))
-    audit=audit_issues
-    a,b,c=st.columns(3)
-    a.metric('Constituent coverage',f'{len(base)/member_count:.1%}' if member_count else 'N/A')
-    b.metric('Missing S&P 500 statements',max(0,member_count-len(base)))
-    c.metric('Accounting review flags',audit_summary['warnings']+audit_summary['review']+audit_summary['critical'])
-    if not audit.empty and {'ticker','severity','category'}.issubset(audit):
-        with st.expander('Data quality · flagged abnormalities and missing constituents'):
-            st.caption('Flags invite verification against original SEC or issuer filings. Missing inputs are not silently imputed.')
-            st.dataframe(audit[['ticker','severity','category','detail']].head(500),hide_index=True,use_container_width=True)
-            st.download_button('Download full data-quality audit',audit.to_csv(index=False),'sp500_data_quality.csv','text/csv')
-    st.subheader('Financial factor visualizations')
-    if not view.empty:
-        left,right=st.columns(2)
-        with left:
-            valid=view.loc[view.GPA.notna() & view.STA.notna()].copy()
-            if not valid.empty:
-                valid['Gross profitability (%)']=valid.GPA*100
-                valid['Accruals / assets (%)']=valid.STA*100
-                fig=px.scatter(valid,x='Gross profitability (%)',y='Accruals / assets (%)',color='sector',
-                    hover_name='ticker',hover_data=['name'],title='Profitability vs. earnings-quality risk',
-                    color_discrete_sequence=px.colors.qualitative.Safe)
-                fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
-                st.plotly_chart(fig,use_container_width=True)
-        with right:
-            quality=view.groupby('sector',as_index=False).agg(Companies=('ticker','size'),GPA_median=('GPA','median'))
-            quality['GPA_median']=quality.GPA_median*100
-            fig=px.bar(quality.sort_values('GPA_median'),x='GPA_median',y='sector',
-                orientation='h',title='Median gross profitability (%) by sector',
-                color_discrete_sequence=['#20B59A'])
-            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
-            st.plotly_chart(fig,use_container_width=True)
-        if {'GPA','STA','BM'}.issubset(view):
-            factors=view[['GPA','BM','STA']].replace([np.inf,-np.inf],np.nan).dropna(how='all')
-            if len(factors)>=5:
-                fig=px.box(factors.melt(var_name='Factor',value_name='Ratio'),x='Factor',y='Ratio',
-                    color='Factor',points='outliers',title='Accounting factor distributions · possible outliers')
-                fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
-                st.plotly_chart(fig,use_container_width=True)
-    st.subheader('Fundamental opportunity map')
-    a,b=st.columns([2.1,1])
-    with a:
-        scatter=view.dropna(subset=['GPA_sector_pct','BM_sector_pct']).copy()
-        if scatter.empty:
-            st.info('Opportunity map requires at least 10 eligible companies per sector with both GPA and B/M. Raw company fundamentals are available on the next page.')
-        else:
-            scatter['Signal']=np.select([scatter.conflicting_signals,scatter.BUY_candidate,scatter.SELL_candidate],
-                                        ['Conflicting','BUY candidate','SELL candidate'],default='Unclassified')
-            fig=px.scatter(scatter,x='BM_sector_pct',y='GPA_sector_pct',color='Signal',
-                           hover_name='ticker',hover_data=['name','sector','industry','GPA','BM'],
-                           title='Gross profitability vs. book-to-market percentile',
-                           color_discrete_map={'BUY candidate':'#20B59A','SELL candidate':'#DA7B76',
-                                               'Conflicting':'#E0B66F','Unclassified':'#8897A9'})
-            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636',
-                              xaxis_title='B/M sector percentile',yaxis_title='GPA sector percentile',
-                              margin=dict(l=10,r=15,b=25,t=55))
-            st.plotly_chart(fig,use_container_width=True)
-    with b:
-        counts=view.groupby('sector').size().reset_index(name='Count')
-        if not counts.empty:
-            fig=px.bar(counts.sort_values('Count'),x='Count',y='sector',orientation='h',
-                       title='Coverage by sector',color_discrete_sequence=['#20B59A'])
-            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636',
-                              margin=dict(l=10,r=5,t=55,b=15),height=410)
-            st.plotly_chart(fig,use_container_width=True)
-    tab_buy,tab_sell,tab_sector=st.tabs(['BUY · Quality & Value','SELL · Accounting Risk','Sector Explorer'])
-    with tab_buy:
-        st.caption('Two independent core inputs: gross profitability and book-to-market value, both relative to eligible sector peers.')
-        numeric_table(buys,['ticker','name','sector','market_cap','GPA','BM','GPA_sector_pct','BM_sector_pct','BUY_score'])
-        st.download_button('Export BUY results',buys.to_csv(index=False),'buy_candidates.csv','text/csv')
-    with tab_sell:
-        st.caption('Independent risk indicators: high accruals, SNOA, Beneish M-score and model-appropriate Altman distress. Values unavailable due to missing fields stay N/A.')
-        numeric_table(sells,['ticker','name','sector','STA','SNOA','Beneish_M','Altman_Z','Altman_model','SELL_flag_count','BUY_candidate'])
-        st.download_button('Export SELL results',sells.to_csv(index=False),'sell_candidates.csv','text/csv')
-    with tab_sector:
-        eligible=base.loc[base.industrial_applicable]
-        med=eligible.groupby('sector').agg(n=('ticker','size'),median_GPA=('GPA','median'),
-                                            median_BM=('BM','median'),median_STA=('STA','median'))
-        med=med.reset_index()
-        for field in ['median_GPA','median_STA']:
-            med[field]=med[field].apply(lambda n:'N/A' if pd.isna(n) else f'{n*100:.2f}%')
-        med['median_BM']=med['median_BM'].apply(lambda n:'N/A' if pd.isna(n) else f'{n:.2f}x')
-        st.dataframe(med,use_container_width=True,hide_index=True)
-        st.caption('These are full-universe peer benchmarks; banks and REITs are not ranked with industrial companies.')
-        if not audit.empty and 'severity' in audit:
-            st.write('Detected data-quality issues by type')
-            problems=audit.groupby(['severity','category']).size().reset_index(name='Count').sort_values('Count',ascending=False).head(15)
-            if len(problems): st.plotly_chart(px.bar(problems,x='Count',y='category',color='severity',orientation='h'),use_container_width=True)
-    with st.expander('Calculation methodology & data-quality audit'):
-        st.markdown('''**GPA** = (revenue − cost of revenue) / assets · **B/M** = positive common equity / market cap (same currency) · **STA** = (net income − operating cash flow) / assets. Sector percentiles are calculated before user filtering. No missing inputs are filled with zero. When there are fewer than 10 valid peers, percentiles are shown as unavailable.''')
-        st.json(validate_universe(base))
-        st.json(audit_summary)
-
-elif page=='Company Fundamentals':
-    if view.empty:
-        st.info('No companies match the current filters.')
-        st.stop()
-    ticker=ticker_selector(view,'fund_company')
-    r=view.loc[view.ticker.eq(ticker)].iloc[0]
-    st.subheader(f'{r["name"]}  /  {ticker}')
-    st.caption(f'{r.sector} · {r.industry} · {r.exchange} · Currency: {r.financial_currency}')
-    company_source_line(r)
+if page=="S&P 500 Screener":
+    st.title("Discover S&P 500 opportunities")
+    st.caption("Filter and compare companies using profitability, book value and accounting quality.")
     a,b,c,d=st.columns(4)
-    a.metric('Market cap',money(r.market_cap))
-    b.metric('GPA',fmt_value(r.GPA,True))
-    c.metric('B/M',fmt_value(r.BM))
-    d.metric('STA',fmt_value(r.STA,True))
-    a2,b2,c2=st.columns(3)
-    a2.metric('SNOA',fmt_value(r.SNOA,True))
-    b2.metric('Altman Z / Z double-prime',fmt_value(r.Altman_Z))
-    c2.metric('Beneish M-score',fmt_value(r.Beneish_M))
-    st.caption(f'Altman: {r.Altman_model} · {r.Altman_zone}; Beneish: {r.Beneish_status} (risk screen, not a probability of fraud)')
-    flags=anomaly_flags(r.to_dict())
-    if flags:
-        st.warning('Data quality review: '+', '.join(x['issue'] for x in flags[:5]))
-    t1,t2,t3=st.tabs(['Financial dashboard','Peer benchmarks','Audit inputs'])
+    a.metric("Companies",len(view))
+    b.metric("Long-screen candidates",len(longs))
+    c.metric("Accounting-risk candidates",len(shorts))
+    d.metric("Data coverage",f"{len(base)/len(members):.1%}")
+    t1,t2,t3=st.tabs(["Opportunity map","Ranked companies","Sector comparison"])
     with t1:
-        x,y=st.columns([1.6,1])
-        with x:
-            s=[]
-            for label,current,prior in [('Revenue','revenue','prior_revenue'),('Net income','net_income','prior_net_income'),('Operating cash flow','operating_cash_flow','prior_operating_cash_flow')]:
-                for period,field in [('Prior FY',prior),('Latest FY',current)]:
-                    if pd.notna(r.get(field)):
-                        s.append({'Statement':label,'Period':period,'Value':r[field]})
-            if s:
-                fig=px.bar(pd.DataFrame(s),x='Statement',y='Value',color='Period',barmode='group',
-                           color_discrete_sequence=['#8898AA','#20B59A'],title='Matched annual statement trends')
-                fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636')
-                st.plotly_chart(fig,use_container_width=True)
-            else:st.info('Prior-year statement figures are unavailable.')
-        with y:
-            st.markdown('##### Accounting indicators')
-            for k,label in [('ROA','Return on assets'),('CFOA','Cash flow on assets')]:
-                st.metric(label,fmt_value(r[k],True))
-            st.metric('Revenue growth',fmt_value(growth(r.revenue,r.get('prior_revenue')),True))
-            st.caption('Growth omitted when the prior base is missing or nonpositive.')
+        plotted=view.dropna(subset=["GPA_sector_pct","BM_sector_pct"]).copy()
+        if len(plotted):
+            plotted["Screen"]=np.select([plotted.conflicting_signals,plotted.BUY_candidate,plotted.SELL_candidate],
+                  ["Mixed","Long","Risk"],default="Other")
+            fig=px.scatter(plotted,x="BM_sector_pct",y="GPA_sector_pct",color="Screen",
+                    hover_name="ticker",hover_data=["name","sector","GPA","BM"],
+                    title="Value versus profitability · sector percentiles",
+                    color_discrete_map={"Long":"#18b790","Risk":"#e07870","Mixed":"#f0be65","Other":"#70859a"})
+            st.plotly_chart(style_chart(fig,470),use_container_width=True)
+            st.caption("Higher = greater book-value exposure or profitability relative to sector peers; not a guaranteed return.")
+        else:st.info("Not enough complete peer observations for this chart.")
     with t2:
-        peers=pd.DataFrame([{'Metric':m,'Raw':r[m],
-                             'Sector median':r[m+'_sector_median'],
-                             'Sector percentile':r[m+'_sector_pct'],
-                             'Industry percentile':r[m+'_industry_pct'],
-                             'Sector observations':r[m+'_sector_count']} for m in ['GPA','BM','STA','ROA','CFOA','SNOA','Beneish_M']])
-        st.dataframe(peers,hide_index=True,use_container_width=True)
-        observed=peers.loc[peers['Sector percentile'].notna()].copy()
-        if len(observed):
-            fig=px.bar(observed,x='Metric',y='Sector percentile',title='Company percentile position among S&P sector peers',text_auto='.0f',color='Metric')
-            fig.update_yaxes(range=[0,100])
-            fig.update_layout(template='plotly_dark',paper_bgcolor='#0B1520',plot_bgcolor='#172636',showlegend=False)
-            st.plotly_chart(fig,use_container_width=True)
-        if not r.industrial_applicable:st.warning('Specialist accounting is required for this sector; industrial rankings are deliberately unavailable.')
+        side=st.radio("Show",["Long candidates","Accounting-risk candidates"],horizontal=True)
+        if side=="Long candidates":
+            table(longs,["ticker","name","sector","market_cap","GPA","BM","BUY_score"])
+        else:table(shorts,["ticker","name","sector","STA","SNOA","Beneish_M","Altman_Z","SELL_flag_count"])
     with t3:
-        fields=['revenue','cost_of_revenue','gross_profit','total_assets','common_equity','market_cap',
-                'net_income','operating_cash_flow','prior_revenue','prior_net_income','prior_operating_cash_flow',
-                'fiscal_year_end','prior_fiscal_year_end','data_source','refreshed_at']
-        st.dataframe(pd.DataFrame({'Source field':fields,'Value':[money(r.get(k,np.nan)) if k in {'revenue','cost_of_revenue','gross_profit','total_assets','common_equity','market_cap','net_income','operating_cash_flow','prior_revenue','prior_net_income','prior_operating_cash_flow'} else str(r.get(k,'')) for k in fields]}),
-                     hide_index=True,use_container_width=True)
-        st.caption('Financial line item definitions can differ across issuers. Verify against SEC/issuer filings.')
-    with st.expander('Advanced models · required data and exact formulas'):
-        st.markdown('**SNOA** = [(Total assets − cash) − (Total assets − ST debt − LT debt − minority interest − preferred equity − common equity)] / Total assets. All named source components are required; missing is NOT treated as zero.')
-        st.markdown('**Altman**: Original public-manufacturer Z or non-manufacturer Z double-prime, according to business classification. Banks and REITs are N/A. The manufacturer form uses CURRENT market capitalization against annual statement figures; treat its score as a screening signal, not a historical backtest.')
-        st.markdown('**Beneish**: Eight-variable 1999 M-score, with an adjustable -1.78 screening threshold. Net income is used as a flagged proxy for continuing-operations income in TATA; no calibrated manipulation probability is claimed.')
-        st.caption('Every model shows N/A unless the required Yahoo financial inputs are present. Sub-industry model assignment warrants analyst review.')
-    st.markdown(f'[Review {ticker} financial statements at Yahoo Finance](https://finance.yahoo.com/quote/{ticker}/financials/)')
+        agg=view.loc[view.industrial_applicable].groupby("sector",as_index=False).agg(
+            Count=("ticker","size"),Median_GPA=("GPA","median"),Median_STA=("STA","median"))
+        if len(agg):
+            agg["Median_GPA"]=agg.Median_GPA*100
+            fig=px.bar(agg.sort_values("Median_GPA"),x="Median_GPA",y="sector",orientation="h",
+                      title="Median gross profitability (% of assets)",hover_data=["Count"],
+                      color_discrete_sequence=["#22a88f"])
+            st.plotly_chart(style_chart(fig,420),use_container_width=True)
+        st.caption("Banks and REITs remain visible in the index, but excluded from industrial factor comparisons.")
+    with st.expander("Data quality and detailed methodology"):
+        issues,summary=audit_table(raw,members)
+        st.write(f"Source coverage: {len(raw)}/{len(members)} securities. Source field gaps and review flags are shown below.")
+        st.json(summary["required_field_coverage"])
+        if not issues.empty:
+            st.dataframe(issues,hide_index=True,use_container_width=True)
+            st.download_button("Export full audit",issues.to_csv(index=False),"data_quality.csv","text/csv")
+
+elif page=="Company Overview":
+    ticker=choose_company(view,"overview_select")
+    r=view.loc[view.ticker.eq(ticker)].iloc[0]
+    st.title(f"{r['name']} ({ticker})")
+    st.caption(f"{r.sector} · {r.industry} · FY {r.fiscal_year_end}")
+    a,b,c,d=st.columns(4)
+    a.metric("Market cap",money(n(r,"market_cap")))
+    b.metric("Annual revenue",cash_label(r,"revenue"))
+    c.metric("Gross profitability",pct(n(r,"GPA")))
+    d.metric("Operating cash flow",cash_label(r,"operating_cash_flow"))
+    t1,t2,t3=st.tabs(["Overview","Financial statements","Accounting ratios"])
+    with t1:
+        figures=[]
+        for title,current,previous in [("Revenue","revenue","prior_revenue"),
+                 ("Net income","net_income","prior_net_income"),
+                 ("Operating cash flow","operating_cash_flow","prior_operating_cash_flow")]:
+            for label,key in [("Previous FY",previous),("Latest FY",current)]:
+                if np.isfinite(n(r,key)):figures.append(dict(Metric=title,Period=label,USD_billions=n(r,key)/1e9))
+        if figures:
+            fig=px.bar(pd.DataFrame(figures),x="Metric",y="USD_billions",color="Period",barmode="group",
+                       title="Annual financial performance · billions in reporting currency",
+                       color_discrete_sequence=["#68809a","#23b497"])
+            st.plotly_chart(style_chart(fig,435),use_container_width=True)
+        st.caption("These are annual financial-statement comparisons, not quarterly figures or stock-price returns.")
+    with t2:
+        metrics=[("Revenue","revenue"),("Cost of revenue","cost_of_revenue"),("Gross profit","gross_profit"),
+                 ("Net income","net_income"),("Operating cash flow","operating_cash_flow"),
+                 ("Total assets","total_assets"),("Common equity","common_equity")]
+        st.dataframe(pd.DataFrame({"Financial item":[x for x,_ in metrics],
+                    "Latest fiscal year":[cash_label(r,k) for _,k in metrics]}),
+                    hide_index=True,use_container_width=True)
+        st.caption("Yahoo Finance figures, matched annual period. Totals may have issuer-specific definitions.")
+    with t3:
+        one,two,three=st.columns(3)
+        for i,(label,key,as_percent) in enumerate([
+                ("Return on assets","ROA",True),("Operating CF / Assets","CFOA",True),
+                ("Book to market","BM",False),("Accruals","STA",True),
+                ("Scaled net operating assets","SNOA",True),("Beneish M-score","Beneish_M",False),
+                ("Altman Z","Altman_Z",False)]):
+            (one,two,three)[i%3].metric(label,pct(n(r,key)) if as_percent else
+                                      f"{n(r,key):.2f}" if np.isfinite(n(r,key)) else "N/A")
+        st.caption(f"Altman model: {r.Altman_model} · {r.Altman_zone}; accounting signals require filing review.")
+        comp=[]
+        for key in ["GPA","BM","STA","ROA","CFOA","SNOA"]:
+            score=n(r,key+"_sector_pct")
+            if np.isfinite(score):comp.append({"Metric":key,"Peer percentile":score})
+        if comp:
+            fig=px.bar(pd.DataFrame(comp),x="Metric",y="Peer percentile",
+                       title="Where this company sits versus its sector peers",
+                       color_discrete_sequence=["#20b99a"],text_auto=".0f")
+            fig.update_yaxes(range=[0,100])
+            st.plotly_chart(style_chart(fig,360),use_container_width=True)
+    with st.expander("Source and methodology"):
+        st.caption(f"Yahoo Finance via yfinance · FY {r.fiscal_year_end} · quote snapshot {r.price_asof} · retrieved {r.refreshed_at}")
+        st.markdown(f"[Review source financial statements](https://finance.yahoo.com/quote/{ticker}/financials/)")
+        st.caption("Market capitalization and latest FY figures use different dates. Do not treat the derived ratios as historical backtests.")
 
 else:
-    st.subheader('Investment Research Desk')
-    st.markdown('''<div class="panel-intro">A screening signal is a research lead, not a trading recommendation. This desk separates verified numeric evidence, accounting red flags, missing information and a human-reviewed investment conclusion.</div>''',unsafe_allow_html=True)
-    st.write('')
-    l,rcol=st.columns(2)
-    with l:
-        st.markdown('##### BUY watchlist · Quality and Value')
-        numeric_table(buys.head(10),['ticker','name','GPA','BM','BUY_score'])
-    with rcol:
-        st.markdown('##### SELL watchlist · Earnings Quality')
-        numeric_table(sells.head(10),['ticker','name','STA','SNOA','Beneish_M','Altman_Z','SELL_flag_count'])
-    if view.empty:
-        st.info('No companies match the current universe filters.')
-        st.stop()
-    ticker=ticker_selector(view,'research_company')
+    st.title("Investment Research")
+    st.caption("Evidence-based long and bearish cases · screening candidates, not automatic trade recommendations")
+    a,b=st.columns(2)
+    with a:table(longs.head(8),["ticker","name","BUY_score"],"Long research shortlist")
+    with b:table(shorts.head(8),["ticker","name","SELL_flag_count"],"Accounting-risk shortlist")
+    ticker=choose_company(view,"research_select")
     r=view.loc[view.ticker.eq(ticker)].iloc[0]
-    company_source_line(r)
-    if r.conflicting_signals:st.warning('CONFLICT: This company meets both the value/quality screen and an earnings-quality risk flag.')
-    ev=evidence(r)
+    findings=describe(r,base)
+    st.subheader(f"{r['name']} · {ticker}")
+    st.markdown(f"**Research status: {findings['verdict']}**")
+    st.caption(findings["reason"])
+    a,b,c,d=st.columns(4)
+    a.metric("Market cap / annual sales",f"{findings['ps']:.2f}x" if np.isfinite(findings["ps"]) else "N/A")
+    b.metric("Sector median",f"{findings['sector_ps']:.2f}x" if np.isfinite(findings["sector_ps"]) else "N/A")
+    c.metric("Earnings yield",pct(findings["earnings_yield"]))
+    d.metric("Operating CF yield",pct(findings["cashflow_yield"]))
     left,right=st.columns(2)
     with left:
-        st.markdown('##### Fundamental evidence')
-        for x in ev['facts']:st.markdown(f'- {x}')
-        if not ev['facts']:st.info('Insufficient numeric evidence.')
+        st.markdown("#### What supports a long case")
+        if findings["strengths"]:
+            for text in findings["strengths"]:st.write("• "+text)
+        else:st.caption("No quantitative strengths established.")
     with right:
-        st.markdown('##### Red flags and limitations')
-        for x in ev['risks']:st.markdown(f'- {x}')
-        if not ev['risks']:st.caption('No quantified red flags in available models; unmodeled risks remain.')
-    with st.expander('Missing information and required due diligence',expanded=True):
-        for x in ev['missing']:st.markdown(f'- {x}')
-    note=st.text_area('Analyst-reviewed investment case / conclusion',key='note_'+ticker,
-                      placeholder='Cite actual filings, discuss valuation, earnings quality, sector conditions, catalysts and a reasoned conclusion. This text is your own reviewed research.',height=135)
-    st.download_button('Download company research brief (.md)',research_report(r,note),
-                       file_name=f'{ticker}_research.md',mime='text/markdown')
-    st.markdown(f'[Underlying Yahoo Finance statements for {ticker}](https://finance.yahoo.com/quote/{ticker}/financials/)')
+        st.markdown("#### What supports a bearish case")
+        if findings["risks"]:
+            for text in findings["risks"]:st.write("• "+text)
+        else:st.caption("No quantified accounting risks under current criteria.")
+    st.subheader("Valuation sensitivity")
+    st.caption("Illustrative sales multiples are editable assumptions—not forecasts or a price target.")
+    low,mid,high=st.columns(3)
+    with low:bear=st.number_input("Bear case P/S",min_value=0.1,value=2.0,step=0.5)
+    with mid:base_multiple=st.number_input("Base case P/S",min_value=0.1,value=4.0,step=0.5)
+    with high:bull=st.number_input("Bull case P/S",min_value=0.1,value=6.0,step=0.5)
+    scen=scenario(r,[("Bear",bear),("Base",base_multiple),("Bull",bull)])
+    chart=scen.loc[scen["Implied change"].notna()].copy()
+    if len(chart):
+        chart["Implied change (%)"]=chart["Implied change"]*100
+        fig=px.bar(chart,x="Scenario",y="Implied change (%)",color="Scenario",
+                   text_auto=".1f",title="Hypothetical market-cap change relative to today's market cap",
+                   color_discrete_sequence=["#d27773","#8f9faf","#26b69b"])
+        st.plotly_chart(style_chart(fig,330),use_container_width=True)
+    st.caption("Revenue is annual historical data; market cap is a recent snapshot. Neither the multiples nor implied changes account for new earnings, share issuance or dilution.")
+    with st.expander("What could invalidate this conclusion?",expanded=True):
+        for gap in findings["gaps"][:8]:st.write("• "+gap)
+    st.subheader("Finish the investment case")
+    st.caption("A defensible final recommendation needs the analyst's specific thesis, catalyst, opposing argument and an actual filing reference.")
+    position=st.selectbox("Your position",["Under review","Long","Short / avoid","No position"])
+    thesis=st.text_area("Investment thesis: why is the market mispricing this company?",height=95)
+    catalyst=st.text_input("Catalyst and expected timing")
+    counter=st.text_area("Strongest counterargument",height=75)
+    invalid=st.text_input("What evidence would invalidate the thesis?")
+    filing=st.text_input("SEC filing or issuer annual-report URL")
+    sections=dict(position=position,thesis=thesis,catalyst=catalyst,
+                  counterargument=counter,invalidation=invalid,filing_reference=filing)
+    require=[thesis.strip(),catalyst.strip(),counter.strip(),invalid.strip(),filing.strip()]
+    if all(require):
+        st.success("Working paper is ready for analyst review; verify source references before using it as a recommendation.")
+    else:st.info("Research draft incomplete: supply thesis, catalyst, counterargument, invalidation and source filing.")
+    assumptions={"Bear P/S":bear,"Base P/S":base_multiple,"Bull P/S":bull}
+    st.download_button("Download research working paper",report(r,findings,assumptions,sections),
+                       file_name=f"{ticker}_investment_research.md",mime="text/markdown")
+    st.markdown(f"[Open Yahoo Finance financial statements for {ticker}](https://finance.yahoo.com/quote/{ticker}/financials/)")
 
 st.divider()
-st.caption('ACCT 3343 · Real records only · Market data and financial-reporting dates may differ · Screen outputs are not guaranteed investment outcomes.')
+st.caption("ACCT 3343 · Yahoo Finance financial-statement snapshot · Academic research; financial models and scenarios are not investment advice")
