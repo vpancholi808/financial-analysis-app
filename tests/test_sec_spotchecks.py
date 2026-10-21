@@ -15,9 +15,12 @@ DATA = Path(__file__).resolve().parents[1] / "universe.csv"
     ("AAPL", 2025, "revenue", 416161),
     ("AAPL", 2025, "gross_profit_reported", 195201),
     ("AAPL", 2025, "total_assets", 359241),
+    ("AAPL", 2025, "net_income", 112010),
+    ("AAPL", 2025, "operating_cash_flow", 111482),
     ("NVDA", 2026, "revenue", 215938),
     ("NVDA", 2026, "gross_profit_reported", 153463),
     ("NVDA", 2026, "total_assets", 206803),
+    ("NVDA", 2026, "net_income", 120067),
 ])
 def test_yahoo_fields_against_sec_10k(ticker,year,field,millions):
     df = pd.read_csv(DATA)
