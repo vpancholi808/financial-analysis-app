@@ -63,7 +63,8 @@ streamlit run app.py
 - `.github/workflows/financial-audit.yml`: automated unit/integration tests plus a universe-wide independent arithmetic and completeness audit, keeping an `audit_summary.json` and `metric_audit.csv` artifact.
 - `tests/test_advanced_models.py`: hand-reconciled, original definitions and missing-data guards.
 - `tests/test_sec_spotchecks.py`: anchored annual FY2025 Apple and FY2026 NVIDIA numbers compared with actual annual SEC 10-K figures.
-- `tests/test_streamlit_app.py`: page-load checks for Stock Screener, Company Fundamentals and Investment Research.
+- `tests/test_streamlit_app.py`: page-load checks for the Screener, Company Profile, Research Desk and Glossary & Data pages.
+- `tests/test_ui_format.py`: display helpers in `ui_format.py` (units, grades, missing values shown as "—" and never as zero).
 - `audit_data.py`: coverage counts, individual missing fields, currency mismatches, statement staleness, negative/inconsistent assets and common-versus-total-equity reconciliation flags.
 
 **Limitations:** Automatic ratio verification is necessary but not equivalent to independent external audit of 500+ sets of source financial statements. Flags may reflect legitimate minority interests or issuer-specific reporting conventions. Mark material discrepancies for filing review instead of silently correcting them.

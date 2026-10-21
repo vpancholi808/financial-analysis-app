@@ -1,11 +1,50 @@
+# Calm, neutral theme that works in light and dark.
+# The accent (blue) is non-semantic: it marks navigation and controls only.
+# Green / amber / red are reserved for good / caution / bad (see ui_format.py).
+# Light or dark follows the viewer's system setting; switch via ⋮ → Settings.
+
 [theme]
-base="dark"
-primaryColor="#20B59A"
-backgroundColor="#0B1520"
-secondaryBackgroundColor="#172636"
-textColor="#E7EFF6"
-font="sans serif"
+font = "sans-serif"
+baseRadius = "0.5rem"
+buttonRadius = "0.5rem"
+showWidgetBorder = true
+headingFontWeights = [700, 650, 600, 600, 600, 600]
+headingFontSizes = ["2.1rem", "1.45rem", "1.15rem", "1rem", "0.95rem", "0.9rem"]
+chartCategoricalColors = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#6250d6", "#e34948"]
+
+[theme.light]
+primaryColor = "#2F6FDE"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F3F5F8"
+textColor = "#18202B"
+borderColor = "#DDE2E8"
+dataframeBorderColor = "#E6EAEF"
+dataframeHeaderBackgroundColor = "#F3F5F8"
+linkColor = "#2F6FDE"
+greenColor = "#1E9E5A"
+orangeColor = "#C98500"
+redColor = "#D64545"
+
+[theme.light.sidebar]
+backgroundColor = "#F6F8FA"
+secondaryBackgroundColor = "#FFFFFF"
+
+[theme.dark]
+primaryColor = "#5B9BF5"
+backgroundColor = "#0F141A"
+secondaryBackgroundColor = "#18202A"
+textColor = "#E6EBF1"
+borderColor = "#2A3441"
+dataframeBorderColor = "#232C37"
+dataframeHeaderBackgroundColor = "#161D26"
+linkColor = "#7AB0F7"
+greenColor = "#2FB36B"
+orangeColor = "#E0A12A"
+redColor = "#E26060"
+
+[theme.dark.sidebar]
+backgroundColor = "#131921"
+secondaryBackgroundColor = "#1B2430"
 
 [client]
-toolbarMode="minimal"
-
+toolbarMode = "minimal"
