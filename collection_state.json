@@ -1,5 +1,5 @@
 {
-  "attempted_total": 443,
+  "attempted_total": 444,
   "attempts": {
     "A": 1,
     "ABNB": 1,
@@ -166,7 +166,7 @@
     "FFIV": 1,
     "FICO": 1,
     "FIS": 1,
-    "FISV": 2,
+    "FISV": 3,
     "FITB": 1,
     "FIX": 1,
     "FLEX": 1,
@@ -959,7 +959,7 @@
   "quality_critical_count": 0,
   "quality_warning_count": 2,
   "statement_completeness": 0.8924302788844621,
-  "status": "collecting",
+  "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-10-20T22:29:23+00:00"
+  "updated_at": "2026-10-21T01:48:25+00:00"
 }

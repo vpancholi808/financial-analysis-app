@@ -1,4 +1,4 @@
 ticker,severity,issue,detail
 EW,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
-SKYD,warning,STALE_ANNUAL_STATEMENTS,Most recent matched annual figures 658 days old
-FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 2 / 3
+SKYD,warning,STALE_ANNUAL_STATEMENTS,Most recent matched annual figures 659 days old
+FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 3 / 3
