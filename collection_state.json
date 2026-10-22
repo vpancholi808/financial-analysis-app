@@ -1467,12 +1467,12 @@
     "ABNB": "2026-10-22|2025-12-31|failed",
     "ACN": "2026-10-22|2025-08-31|failed",
     "ADP": "2026-10-21|2026-06-30|failed",
-    "AEE": "2026-10-21|2025-12-31|failed",
-    "AEP": "2026-10-21|2025-12-31|failed",
-    "AMZN": "2026-10-21|2025-12-31|failed",
-    "ANET": "2026-10-21|2025-12-31|failed",
+    "AEE": "2026-10-22|2025-12-31|failed",
+    "AEP": "2026-10-22|2025-12-31|failed",
+    "AMZN": "2026-10-22|2025-12-31|failed",
+    "ANET": "2026-10-22|2025-12-31|failed",
     "ATO": "2026-10-21|2025-09-30|failed",
-    "AWK": "2026-10-21|2025-12-31|failed",
+    "AWK": "2026-10-22|2025-12-31|failed",
     "AZO": "2026-10-21|2025-08-31|failed",
     "BIIB": "2026-10-21|2025-12-31|failed",
     "BKNG": "2026-10-21|2025-12-31|failed",
@@ -1484,7 +1484,7 @@
     "aborted": true,
     "contact_set": true,
     "date": "2026-10-22",
-    "due": 101,
+    "due": 96,
     "failed": 5,
     "filled": 0,
     "last_error": "InvalidHeader: Invalid leading whitespace, reserved character(s), or return character(s) in header value: 'Vishal Pancholi\\r\\nvpancholi808@gmail.com'",
@@ -1505,5 +1505,5 @@
   "statement_completeness": 0.8924302788844621,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-10-22T01:41:19+00:00"
+  "updated_at": "2026-10-22T07:49:28+00:00"
 }
