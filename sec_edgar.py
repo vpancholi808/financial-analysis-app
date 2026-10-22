@@ -166,6 +166,12 @@ def extract_year(facts: dict, end) -> dict:
             out["total_liabilities"] = lse - se - (mi if _finite(mi) else 0.0)
     # Common equity = stockholders' equity less preferred stock (Yahoo "Common Stock Equity").
     se = out.pop("stockholders_equity")
+    if not _finite(se):
+        # Some filers tag only total equity including noncontrolling interest;
+        # usable when the noncontrolling interest is tagged (it may be zero).
+        eq_nci = annual_value(facts, "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", end, "instant")
+        if _finite(eq_nci) and _finite(out["minority_interest"]):
+            se = eq_nci - out["minority_interest"]
     if _finite(se):
         out["common_equity"] = se - (out["preferred_equity"] if _finite(out["preferred_equity"]) else 0.0)
     else:
@@ -239,6 +245,11 @@ def fill_from_sec(row: dict, facts: dict) -> tuple[dict, list[str], str]:
         cur = extract_year(facts, latest)
         if not _finite(cur.get("total_assets")) or cur["total_assets"] <= 0:
             return row, [], "newer 10-K lacks total assets"
+        # A full fiscal year is required: after a merger or fiscal-year change the
+        # 10-K can cover a stub period, which leaves the income statement blank.
+        missing = [f for f in ("revenue", "net_income", "operating_cash_flow", "common_equity") if not _finite(cur.get(f))]
+        if missing:
+            return row, [], "newer 10-K not used: no full-year " + ", ".join(missing)
         prev = extract_year(facts, prior_end) if prior_end is not None else {}
         for f in CURRENT_FIELDS:
             row[f] = cur.get(f, np.nan)
