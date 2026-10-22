@@ -7,6 +7,22 @@ holds the display helpers (number formats, grades, labels, tooltips).
 from pathlib import Path
 import json
 import hashlib
+import importlib
+import os
+import sys
+import time
+
+# Streamlit keeps imported modules in memory between runs. When new code is
+# deployed (e.g. a merge that adds a function), app.py is re-read but a helper
+# module may not be, which raises ImportError on the live site. Reload any
+# local module whose file changed since it was loaded, dependencies first.
+for _name in ("advanced_models","finance_models","ui_format","research_workbench","presentation","audit_data"):
+    _mod=sys.modules.get(_name)
+    if _mod is None:continue
+    try:
+        if os.path.getmtime(_mod.__file__)>getattr(_mod,"_loaded_at",0):
+            importlib.reload(_mod);_mod._loaded_at=time.time()
+    except (OSError,ImportError,TypeError):pass
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -15,6 +31,10 @@ import streamlit as st
 from finance_models import GICS_SECTORS, ScreenSettings, prepare, classify, scope_filter
 from research_workbench import describe, scenario, report, money, pct, n, change, investment_case, recommendation_table
 from audit_data import audit_table
+import presentation as pr
+for _name in ("advanced_models","finance_models","ui_format","research_workbench","presentation","audit_data"):
+    if _name in sys.modules and not hasattr(sys.modules[_name],"_loaded_at"):
+        sys.modules[_name]._loaded_at=time.time()
 from ui_format import (METRICS, MISSING, TONE_HEX, GOOD, BAD, CAUTION, NEUTRAL, NA,
                        fmt_money, fmt_pct, fmt_multiple, fmt_number, fmt_metric, ordinal,
                        standing, grade_from_percentile, altman_status, screen_status,
@@ -22,12 +42,12 @@ from ui_format import (METRICS, MISSING, TONE_HEX, GOOD, BAD, CAUTION, NEUTRAL, 
 
 ROOT=Path(__file__).resolve().parent
 PAGES=["S&P 500 Screener","Company Profile","Research Desk","Glossary & Data"]
-PAGE_CAPTIONS=["Find long and accounting-risk candidates","One company versus its sector",
+PAGE_CAPTIONS=["Buy and avoid ideas, every company, sectors, map","One company, answer first",
                "Build an evidence-based case","Definitions, sources, data quality"]
 ACCENT="#3E7FE6"; PRIOR="#9AA5B1"
 
 st.set_page_config(page_title="S&P 500 | Financial Research",page_icon="📈",layout="wide",
-                   initial_sidebar_state="expanded")
+                   initial_sidebar_state="auto")
 # Layout-only CSS: colours come from the theme so light and dark both work.
 st.markdown("""<style>
 .block-container{max-width:1380px;padding-top:2.2rem;padding-bottom:2.5rem}
@@ -158,33 +178,34 @@ with st.sidebar:
     st.caption("ACCT 3343 · accounting-based equity screen")
     page=st.radio("Go to",PAGES,captions=PAGE_CAPTIONS,key="nav")
     st.divider()
-    st.markdown("**Filters**")
+    st.markdown("**Show me**")
     sectors=st.multiselect("Sectors",all_sectors,default=[],placeholder="All sectors",
                            help="Leave empty to include every sector.")
     active_sectors=sectors or all_sectors
     industries=sorted(base.loc[base.sector.isin(active_sectors),"industry"].dropna().unique())
     industry=st.selectbox("Industry",["All industries"]+industries)
-    cap_min=st.number_input("Minimum market cap ($B)",min_value=0.,value=0.,step=5.,
-                            help="Companies below this market capitalization are hidden.")
-    with st.expander("Screen settings"):
-        st.caption("**Long screen** — strong gross profitability *and* cheap book-to-market versus sector peers.")
-        gpa=st.slider("Min. profitability rank (GPA percentile)",0,100,60,5,
-                      help="Sector percentile of gross profit / assets a long candidate must reach.")
-        bm=st.slider("Min. value rank (B/M percentile)",0,100,60,5,
-                     help="Sector percentile of book equity / market cap a long candidate must reach.")
-        score=st.slider("Min. long score",0,100,65,5,
-                        help="Long score = weight × GPA percentile + (1 − weight) × B/M percentile.")
-        w=st.slider("Profitability weight in long score",0.,1.,.6,.05)
-        st.caption("**Accounting-risk screen** — independent warning checks; not the inverse of the long screen.")
-        sta=st.slider("Accruals flag at percentile ≥",0,100,80,5,
-                      help="Flags positive accruals (profit above operating cash) at or above this sector percentile.")
-        snoa=st.slider("Net operating assets flag at percentile ≥",0,100,80,5)
-        beneish=st.number_input("Beneish M-score cutoff",value=-1.78,step=.01,
-                                help="M-scores above this value are flagged. −1.78 is the published default.")
-        riskcount=st.slider("Checks needed to be risk-flagged",1,4,2,
-                            help="How many of the 4 accounting-risk checks must trigger. Only checks with complete inputs can fire. "
-                                 "Beneish index outliers and Altman results for negative-equity firms are shown for review and never count.")
-    st.caption(f"Dataset: {len(base)} of {len(members)} S&P 500 listings · market caps as of {asof}")
+    cap_min=st.number_input("Smallest company to include (market value, $B)",min_value=0.,value=0.,step=5.,
+                            help="Companies with a smaller market value are hidden.")
+    st.markdown("**How strict is the screen?**")
+    gpa_top=st.slider("A buy must be in its sector's top … for profitability",5,100,40,5,format="%d%%",
+                      help="Gross profit per $1 of assets, ranked within the sector. 40% = the company must beat 60% of its sector peers.")
+    bm_top=st.slider("… and in the top … for cheapness",5,100,40,5,format="%d%%",
+                     help="Book value against market value, ranked within the sector. 40% = cheaper than 60% of its sector peers.")
+    riskcount=st.slider("Avoid when at least this many warning signs show",1,4,2,
+                        help="Out of 4 independent accounting checks: profit ahead of cash, heavy balance sheet, manipulation score, distress score. "
+                             "Checks that can't be computed, or that are under review, never count.")
+    with st.expander("Advanced settings"):
+        score=st.slider("Minimum combined score for a buy",0,100,65,5,
+                        help="Combined score = weight × profitability rank + (1 − weight) × value rank, on a 0–100 scale.")
+        w=st.slider("Weight of profitability in the combined score",0.,1.,.6,.05)
+        sta_worst=st.slider("Profit-ahead-of-cash warning: sector's worst …",5,100,20,5,format="%d%%",
+                            help="Flags positive accruals (profit above operating cash flow) in this share of the sector with the highest accruals.")
+        snoa_worst=st.slider("Heavy-balance-sheet warning: sector's heaviest …",5,100,20,5,format="%d%%",
+                             help="Flags net operating assets in this share of the sector with the heaviest balance sheets.")
+        beneish=st.number_input("Manipulation-score warning line (Beneish M)",value=-1.78,step=.01,
+                                help="Scores above this line are flagged. −1.78 is the published default; it is a warning, not proof of fraud.")
+    gpa=100-gpa_top;bm=100-bm_top;sta=100-sta_worst;snoa=100-snoa_worst
+    st.caption(f"{len(base)} of {len(members)} S&P 500 companies · market values from {asof}")
     with st.expander("Sources and methodology"):
         st.write("Annual company statements are matched by fiscal year. Market cap is a more recent quote snapshot; ratios are cross-sectional, not point-in-time backtests.")
         st.markdown("[Financial statements at Yahoo Finance](https://finance.yahoo.com/)")
@@ -195,6 +216,9 @@ settings=ScreenSettings(buy_gpa_pct=gpa,buy_bm_pct=bm,buy_score_min=score,buy_gp
 selected=scope_filter(base,active_sectors,industry,cap_min*1e9)
 view=classify(selected,settings)
 view=view.join(recommendation_table(view,base,settings))
+try:theme_type=st.context.theme.type
+except Exception:theme_type=None
+P=pr.palette(theme_type)
 longs=view.loc[view.BUY_candidate].sort_values("BUY_score",ascending=False)
 shorts=view.loc[view.SELL_candidate].sort_values(["SELL_flag_count","STA"],ascending=[False,False])
 
@@ -249,9 +273,9 @@ SCREEN_CFG={**cfg_common(),
     "GPA rank":rank_col("Profitability rank","Gross profitability (GPA) percentile within its sector; 100 = most profitable."),
     "B/M":CC.NumberColumn("Book-to-market",format="%.2f",help=help_for("BM")),
     "B/M rank":rank_col("Value rank","Book-to-market percentile within its sector; 100 = cheapest relative to book value."),
-    "Long score":rank_col("Long score","Weighted blend of the profitability and value ranks (0–100)."),
+    "Long score":rank_col("Combined score","Weighted blend of the profitability and value ranks (0–100)."),
     "Accruals":pct_col("STA","Accruals"),
-    "Risk flags":CC.NumberColumn("Risk flags",format="%d of 4",help="Accounting-risk checks triggered: accruals, net operating assets, Beneish M-score, Altman distress."),
+    "Risk flags":CC.NumberColumn("Warning signs",format="%d of 4",help="Warning signs showing: profit ahead of cash, heavy balance sheet, manipulation score, distress score."),
     "Signals fired":CC.TextColumn("Signals fired",help="Which accounting-risk checks triggered for this company."),
     "Altman Z":CC.NumberColumn("Altman score",format="%.2f",help=help_for("Altman_Z")),
     "Altman model":CC.TextColumn("Altman model",help="Z (manufacturer): distress < 1.81, grey 1.81–2.99. Z″ (non-manufacturer): distress < 1.1, grey 1.1–2.6."),
@@ -261,162 +285,151 @@ SCREEN_CFG={**cfg_common(),
 
 # ================================================================== pages
 if page=="S&P 500 Screener":
-    eyebrow("S&P 500 · accounting screen")
+    counts={k:int(view.rec_position.eq(k).sum()) for k in ["Long","Short / avoid","No position","Not rated"]}
+    eyebrow(f"S&P 500 · data as of {asof}")
     st.title("Screener")
-    n_conf=int(view.conflicting_signals.sum())
-    n_spec=int((~view.industrial_applicable).sum())
-    summary=(f"Of the **{len(view)}** companies in view, **{len(longs)}** pass the long screen "
-             f"(strong gross profitability *and* cheap book-to-market versus sector peers) and "
-             f"**{len(shorts)}** trip at least {riskcount} of 4 accounting-risk checks")
-    summary+=f"; {n_conf} show both signals." if n_conf else "."
-    if n_spec:summary+=f" {n_spec} banks, insurers and REITs are listed but not scored."
-    n_stale=int((view.industrial_applicable & view.stale_statements).sum())
-    if n_stale:summary+=f" {n_stale} with statements older than about 15 months {'is' if n_stale==1 else 'are'} not scored until the data refreshes."
-    n_long=int(view.rec_position.eq("Long").sum());n_short=int(view.rec_position.eq("Short / avoid").sum())
-    summary+=(f" After the earnings and conflict checks, the recommendation is **▲ Long for {n_long}** and "
-              f"**▼ Short / avoid for {n_short}** (see the Recommendation column).")
+    summary=(f"Of **{len(view)}** companies, **{counts['Long']} look like buys**: very profitable and cheap for their sector, "
+             f"with earnings backed by cash. **{counts['Short / avoid']} are worth avoiding**: {riskcount} or more accounting warning signs.")
     st.markdown(summary)
-    a,b,c,d=st.columns(4)
-    a.metric("Companies in view",f"{len(view):,}",border=True,
-             help=f"{len(base)} of {len(members)} current S&P 500 listings have usable statements ({fmt_pct(coverage)} coverage). Filters in the sidebar narrow this.")
-    b.metric("▲ Long candidates",len(longs),border=True,
-             help=f"GPA rank ≥ {gpa}, B/M rank ≥ {bm} and long score ≥ {score}. A screen result, not a recommendation.")
-    c.metric("▼ Risk-flagged",len(shorts),border=True,
-             help=f"At least {riskcount} of 4 accounting-risk checks triggered. Warnings require filing review; not proof of misstatement.")
-    d.metric("Data as of",asof,border=True,
-             help=f"Market caps are a quote snapshot on this date. Annual statements have fiscal years ending {fy_min} to {fy_max}.")
-    st.caption(f"Coverage {fmt_pct(coverage)} of current S&P 500 listings · statements: Yahoo Finance via yfinance · "
-               "a screen result is a starting point for research, not investment advice.")
+    st.html(pr.split_bar_html(counts,P))
+    conv_rank={"High":0,"Moderate":1,"Low":2,"":3}
 
-    t1,t2,t3,t4,t5=st.tabs(["▲ Long candidates","▼ Risk flags","Opportunity map","Sector medians","All companies"])
+    t1,t2,t3,t4=st.tabs(["Ideas","All companies","By sector","Map"])
     with t1:
-        st.markdown("Ranked by **long score**. Bars show where each company sits **within its own sector** (100 = best).")
-        if longs.empty:st.info("No qualifying companies. Adjust the filters or screen settings.")
-        else:
-            data=screen_frame(longs)[["Ticker","Company","Recommendation","Sector","Market cap","Long score","GPA rank","GPA","B/M rank","B/M","Risk flags","FY end"]]
-            ev=st.dataframe(styled(data,["Recommendation"]),column_config=SCREEN_CFG,hide_index=True,width="stretch",
-                            height=table_height(len(data)),placeholder=MISSING,
-                            on_select="rerun",selection_mode="single-row",key="tbl_long")
-            selection_actions(ev,data,"tbl_long")
+        def idea_cards(pos,title,tone_word,empty):
+            d=view.loc[view.rec_position.eq(pos)]
+            d=d.assign(_c=d.rec_conviction.map(conv_rank)).sort_values(
+                ["_c","BUY_score" if pos=="Long" else "SELL_flag_count"],ascending=[True,False])
+            st.markdown(f"#### {title}")
+            if d.empty:
+                st.info(empty);return
+            for _,r in d.head(5).iterrows():
+                with st.container(border=True):
+                    ev=pr.evidence_label(pos,r.rec_conviction)
+                    colour={"Strong evidence":tone_word,"Moderate evidence":"orange"}.get(ev,"gray")
+                    st.markdown(f"**{r.ticker}** &nbsp;{r['name']} &nbsp; :{colour}-badge[{ev}]")
+                    st.markdown(md(pr.why_line(r,settings)))
+                    a,b=st.columns([3,2],vertical_alignment="center")
+                    a.caption(f"{r.sector} · market value {pr.money(r.market_cap)}")
+                    b.button(f"Open {r.ticker} →",key=f"idea_{pos}_{r.ticker}",type="tertiary",
+                             on_click=go_to,args=(r.ticker,"Company Profile"),width="stretch")
+            if len(d)>5:st.caption(f"Showing the strongest 5 of {len(d)}. All of them are in **All companies**.")
+        left,right=st.columns(2,gap="large")
+        with left:idea_cards("Long","▲ Best buy ideas","green","No company passes the buy screen with these settings. Try loosening them in the sidebar.")
+        with right:idea_cards("Short / avoid","▼ Companies to avoid","red","No company shows enough warning signs with these settings.")
     with t2:
-        st.markdown("Each check is a separate warning sign. **⚠ Flag** = triggered, **✓ Clear** = passed, **–** = input not reported.")
-        if shorts.empty:st.info("No qualifying companies. Adjust the filters or screen settings.")
+        opts=["all","Long","Short / avoid","No position","Not rated"]
+        names={"all":f"All {len(view)}","Long":f"▲ Buy {counts['Long']}","Short / avoid":f"▼ Avoid {counts['Short / avoid']}",
+               "No position":f"○ No clear signal {counts['No position']}","Not rated":f"– Not rated {counts['Not rated']}"}
+        f1,f2,f3=st.columns([5,2,1.3],vertical_alignment="center")
+        with f1:pick=st.segmented_control("Show",opts,format_func=lambda k:names[k],default="all",key="rec_filter",label_visibility="collapsed")
+        with f2:query=st.text_input("Search",placeholder="Search ticker or company",key="rec_search",label_visibility="collapsed")
+        with f3:more=st.toggle("More columns",key="rec_more")
+        pick=pick or "all"
+        shown=view if pick=="all" else view.loc[view.rec_position.eq(pick)]
+        if query:
+            qq=query.strip().lower()
+            shown=shown.loc[shown.ticker.str.lower().str.contains(qq,regex=False)|shown["name"].str.lower().str.contains(qq,regex=False)]
+        rec_order={"Long":0,"Short / avoid":1,"No position":2,"Not rated":3}
+        shown=shown.assign(_r=shown.rec_position.map(rec_order),_c=shown.rec_conviction.map(conv_rank)) \
+                   .sort_values(["_r","_c","market_cap"],ascending=[True,True,False])
+        data=pd.DataFrame({
+            "Ticker":shown.ticker.values,"Company":shown["name"].values,
+            "Call":[pr.call_label(p_) for p_ in shown.rec_position],
+            "Evidence":["Near miss" if pr.is_near_miss(r,settings) else pr.evidence_label(r.rec_position,r.rec_conviction).replace(" evidence","")
+                        for _,r in shown.iterrows()],
+            "Why":[pr.why_line(r,settings) for _,r in shown.iterrows()],
+            "Data":[pr.data_status(r)[0] for _,r in shown.iterrows()],
+            "Market cap":(shown.market_cap/1e9).values})
+        cols=["Ticker","Company","Call","Evidence","Market cap","Data","Why"]
+        if more or pick=="Short / avoid":
+            data["Warning signs"]=[", ".join(pr.warnings_fired(r)) or MISSING for _,r in shown.iterrows()]
+            cols.insert(4,"Warning signs")
+        if more:
+            data["Profitability rank"]=shown.GPA_sector_pct.values;data["Value rank"]=shown.BM_sector_pct.values
+            data["Combined score"]=shown.BUY_score.values
+            data["Distress zone"]=[altman_status(z)[0] for z in shown.Altman_zone]
+            data["FY end"]=shown.fiscal_year_end.astype(str).replace({"nan":MISSING}).values
+            cols+=["Profitability rank","Value rank","Combined score","Distress zone","FY end"]
+        cfg={**cfg_common(),
+             "Ticker":CC.TextColumn("Ticker",pinned=True,width=70),
+             "Company":CC.TextColumn("Company",pinned=True,width=190),
+             "Call":CC.TextColumn("Call",width=120,help="▲ Buy: passes the buy screen with cash-backed profits and no warning signs. "
+                                  "▼ Avoid: enough independent warning signs. ○ No clear signal: neither. – Not rated: bank, insurer, REIT or out-of-date data."),
+             "Evidence":CC.TextColumn("Evidence",width=95,help="How strongly the data supports the call. Near miss: within 10 points of both buy ranks, no warning signs."),
+             "Why":CC.TextColumn("Why",width=560,help="Hover a cell to read the full sentence."),
+             "Market cap":CC.NumberColumn("Market value",format="$%,.1fB",width=110,help="Latest market value in US$ billions."),
+             "Data":CC.TextColumn("Data",width=130,help="Complete: all lines from Yahoo Finance. Partly from 10-K: blanks filled from the SEC filing for the same year. "
+                                  "From FY…10-K: a newer annual report taken from the SEC. Out of date: not scored."),
+             "Warning signs":CC.TextColumn("Warning signs",width="medium"),
+             "Profitability rank":rank_col("Profitability rank","Gross profit per $1 of assets, percentile within the sector; 100 = most profitable."),
+             "Value rank":rank_col("Value rank","Book value against market value, percentile within the sector; 100 = cheapest."),
+             "Combined score":rank_col("Combined score","Weighted blend of the profitability and value ranks (0–100)."),
+             "Distress zone":CC.TextColumn("Distress zone",help=help_for("Altman_Z")),
+             "FY end":CC.TextColumn("FY end",width="small")}
+        if data.empty:st.info("No companies match. Clear the search or pick another filter.")
         else:
-            rows=[]
-            for _,r in shorts.iterrows():
-                ch=risk_checks(r,settings)
-                rows.append({"Ticker":r.ticker,"Company":r["name"],"Recommendation":r.rec_label,"Sector":r.sector,"Risk flags":r.SELL_flag_count,
-                             "Accruals check":ch[0]["label"],"Net op. assets check":ch[1]["label"],
-                             "Manipulation check":ch[2]["label"],"Distress check":ch[3]["label"],
-                             "Accruals":n(r,"STA")*100,"SNOA value":n(r,"SNOA")*100,"M-score":n(r,"Beneish_M"),
-                             "Altman Z":n(r,"Altman_Z"),"Altman model":altman_short(r.Altman_model),
-                             "Distress zone":altman_status(r.Altman_zone)[0],"FY end":str(r.fiscal_year_end)})
-            data=pd.DataFrame(rows)
-            st.caption(SNOA_NOTE)
-            cfg={**SCREEN_CFG,
-                 "Accruals check":CC.TextColumn("Accruals",help=help_for("STA")),
-                 "Net op. assets check":CC.TextColumn("Net op. assets",help=help_for("SNOA")),
-                 "Manipulation check":CC.TextColumn("Beneish M",help=help_for("Beneish_M")),
-                 "Distress check":CC.TextColumn("Altman distress",help=help_for("Altman_Z")),
-                 "Accruals":pct_col("STA","Accruals value"),
-                 "SNOA value":pct_col("SNOA","Net op. assets value"),
-                 "M-score":CC.NumberColumn("M-score",format="%.2f",help=help_for("Beneish_M"))}
-            ev=st.dataframe(styled(data,["Recommendation","Accruals check","Net op. assets check","Manipulation check","Distress check","Distress zone"]),
-                            column_config=cfg,hide_index=True,width="stretch",
+            ev=st.dataframe(styled(data[cols],["Call","Distress zone"]),column_config=cfg,hide_index=True,width="stretch",
                             height=table_height(len(data)),placeholder=MISSING,
-                            on_select="rerun",selection_mode="single-row",key="tbl_risk")
-            selection_actions(ev,data,"tbl_risk")
+                            on_select="rerun",selection_mode="single-row",key="tbl_all")
+            selection_actions(ev,data,"tbl_all")
+        calls=view.loc[view.rec_position.isin(["Long","Short / avoid"])].assign(
+            _r=lambda d:d.rec_position.map(rec_order),_c=lambda d:d.rec_conviction.map(conv_rank)).sort_values(["_r","_c"])
+        recs=pd.DataFrame({"Ticker":calls.ticker,"Company":calls["name"],"Sector":calls.sector,
+                           "Call":[pr.CALL_NAME[p_] for p_ in calls.rec_position],
+                           "Evidence":[pr.evidence_label(p_,c_) for p_,c_ in zip(calls.rec_position,calls.rec_conviction)],
+                           "Why":[pr.why_line(r,settings) for _,r in calls.iterrows()],
+                           "Warning signs":[", ".join(pr.warnings_fired(r)) for _,r in calls.iterrows()],
+                           "Profitability rank":calls.GPA_sector_pct.round(1),"Value rank":calls.BM_sector_pct.round(1),
+                           "Combined score":calls.BUY_score.round(1),"Market value (USD)":calls.market_cap,
+                           "Data":[pr.data_status(r)[0] for _,r in calls.iterrows()],
+                           "FY end":calls.fiscal_year_end,"Market value date":calls.price_asof})
+        export=view[["ticker","name","sector","industry","rec_position","rec_conviction","market_cap","GPA","GPA_sector_pct","BM","BM_sector_pct",
+                     "BUY_score","BUY_candidate","STA","SNOA","Beneish_M","Altman_Z","Altman_zone",
+                     "SELL_flag_count","SELL_candidate","conflicting_signals"]].assign(
+                         call=lambda d:d.rec_position.map(pr.CALL_NAME),
+                         evidence=lambda d:[pr.evidence_label(p_,c_) for p_,c_ in zip(d.rec_position,d.rec_conviction)]
+                     ).drop(columns=["rec_position","rec_conviction"])
+        d1,d2=st.columns(2)
+        d1.download_button(f"Download buy / avoid list ({len(recs)} companies, CSV)",recs.to_csv(index=False),
+                           "sp500_recommendations.csv","text/csv",type="primary",width="stretch",disabled=recs.empty)
+        d2.download_button("Download everything (CSV)",export.to_csv(index=False),"sp500_screen.csv","text/csv",width="stretch")
     with t3:
+        st.markdown("Every company is ranked only against its own sector, so each row stands alone. "
+                    "The *typical* columns are that sector's median: the yardstick its companies are measured against.")
+        tbl=pr.sector_table_html(view,P)
+        if tbl:st.html(tbl)
+        else:st.info("No scored companies match the filters.")
+        st.caption("Banks, insurers and REITs are listed in the app but not scored: these accounting measures don't fit how they make money.")
+    with t4:
         plotted=view.dropna(subset=["GPA_sector_pct","BM_sector_pct"]).copy()
         if len(plotted):
-            plotted["Screen"]=np.select([plotted.conflicting_signals,plotted.BUY_candidate,plotted.SELL_candidate],
-                  ["Mixed signals","Long candidate","Risk-flagged"],default="No signal")
+            plotted["Call"]=plotted.rec_position.map({"Long":"Buy","Short / avoid":"Avoid"}).fillna("No clear signal")
             plotted["GPA (%)"]=plotted.GPA*100
-            order=["Long candidate","Risk-flagged","Mixed signals","No signal"]
-            fig=px.scatter(plotted,x="BM_sector_pct",y="GPA_sector_pct",color="Screen",symbol="Screen",
-                    category_orders={"Screen":order},
-                    color_discrete_map={"Long candidate":TONE_HEX[GOOD],"Risk-flagged":TONE_HEX[BAD],
-                                        "Mixed signals":TONE_HEX[CAUTION],"No signal":TONE_HEX[NEUTRAL]},
-                    symbol_map={"Long candidate":"triangle-up","Risk-flagged":"triangle-down",
-                                "Mixed signals":"diamond","No signal":"circle"},
+            order=["Buy","Avoid","No clear signal"]
+            st.markdown("Each dot is a company, placed by where it ranks **within its own sector**. Buys come from the shaded top-right corner.")
+            fig=px.scatter(plotted,x="BM_sector_pct",y="GPA_sector_pct",color="Call",symbol="Call",
+                    category_orders={"Call":order},
+                    color_discrete_map={"Buy":TONE_HEX[GOOD],"Avoid":TONE_HEX[BAD],"No clear signal":TONE_HEX[NEUTRAL]},
+                    symbol_map={"Buy":"triangle-up","Avoid":"triangle-down","No clear signal":"circle"},
                     hover_name="name",custom_data=["ticker","sector","GPA (%)","BM"],
-                    title="Value versus profitability, ranked within each sector",
-                    labels={"BM_sector_pct":"Value rank in sector (book-to-market percentile) →",
-                            "GPA_sector_pct":"Profitability rank in sector (GPA percentile) →"})
+                    title="Where each company ranks in its own sector",
+                    labels={"BM_sector_pct":"Cheaper than sector peers (value rank) →",
+                            "GPA_sector_pct":"More profitable than sector peers (profitability rank) →"})
             fig.update_traces(marker=dict(size=9,line=dict(width=0)),
                 hovertemplate="<b>%{hovertext}</b> (%{customdata[0]})<br>%{customdata[1]}<br>"
-                              "Profitability rank %{y:.0f} · GPA %{customdata[2]:.1f}%<br>"
-                              "Value rank %{x:.0f} · B/M %{customdata[3]:.2f}<extra></extra>")
+                              "Profitability rank %{y:.0f} · %{customdata[2]:.0f}¢ gross profit per $1 of assets<br>"
+                              "Value rank %{x:.0f}<extra></extra>")
             for tr in fig.data:
-                if tr.name=="No signal":tr.marker.opacity=.35
-            fig.add_vline(x=bm,line_dash="dot",line_width=1,line_color=PRIOR)
-            fig.add_hline(y=gpa,line_dash="dot",line_width=1,line_color=PRIOR)
-            fig.add_annotation(x=100,y=100,xanchor="right",yanchor="bottom",showarrow=False,
-                               text="Profitable and cheap vs peers",font=dict(size=11,color=TONE_HEX[GOOD]))
+                if tr.name=="No clear signal":tr.marker.opacity=.35
+            fig.add_shape(type="rect",x0=bm,x1=103,y0=gpa,y1=106,line_width=0,fillcolor=TONE_HEX[GOOD],opacity=.10,layer="below")
+            fig.add_annotation(x=102,y=105,xanchor="right",yanchor="top",showarrow=False,
+                               text="Buy zone",font=dict(size=12,color=TONE_HEX[GOOD]))
             fig.update_xaxes(range=[-2,103]);fig.update_yaxes(range=[-2,106])
-            show_chart(fig,500)
-            st.caption(f"Dotted lines mark the current thresholds (value rank ≥ {bm}, profitability rank ≥ {gpa}); long candidates "
-                       f"must also reach a long score of {score}. Higher = greater book value or profitability relative to sector peers; not a guaranteed return.")
-        else:st.info("Not enough complete peer observations for this chart.")
-    with t4:
-        ind=view.loc[view.industrial_applicable]
-        if len(ind):
-            agg=ind.groupby("sector",as_index=False).agg(
-                Companies=("ticker","size"),Median_GPA=("GPA","median"),Median_BM=("BM","median"),
-                Median_ROA=("ROA","median"),Median_STA=("STA","median"),
-                Long=("BUY_candidate","sum"),Risk=("SELL_candidate","sum"))
-            agg["Median_GPA"]=agg.Median_GPA*100
-            fig=px.bar(agg.sort_values("Median_GPA"),x="Median_GPA",y="sector",orientation="h",
-                      title="Median gross profitability by sector (% of assets)",
-                      custom_data=["Companies"],text="Median_GPA",
-                      labels={"Median_GPA":"Median gross profit / assets (%)","sector":""},
-                      color_discrete_sequence=[ACCENT])
-            fig.update_traces(texttemplate="%{text:.1f}%",textposition="outside",cliponaxis=False,
-                              hovertemplate="<b>%{y}</b><br>Median GPA %{x:.1f}%<br>%{customdata[0]} companies<extra></extra>")
-            show_chart(fig,420)
-            tbl=agg.sort_values("Median_GPA",ascending=False).rename(columns={"sector":"Sector"})
-            tbl["Median_ROA"]=tbl.Median_ROA*100;tbl["Median_STA"]=tbl.Median_STA*100
-            st.dataframe(tbl,hide_index=True,width="stretch",placeholder=MISSING,column_config={
-                "Sector":CC.TextColumn("Sector",pinned=True),
-                "Companies":CC.NumberColumn("Companies",format="%d"),
-                "Median_GPA":pct_col("GPA","Median gross profitability"),
-                "Median_BM":CC.NumberColumn("Median book-to-market",format="%.2f",help=help_for("BM")),
-                "Median_ROA":pct_col("ROA","Median return on assets"),
-                "Median_STA":pct_col("STA","Median accruals"),
-                "Long":CC.NumberColumn("▲ Long candidates",format="%d"),
-                "Risk":CC.NumberColumn("▼ Risk-flagged",format="%d")})
-        st.caption("Banks, insurers and REITs remain visible in the index, but are excluded from industrial factor comparisons.")
-    with t5:
-        rec_order={"Long":0,"Short / avoid":1,"No position":2,"Not rated":3}
-        conv_order={"High":0,"Moderate":1,"Low":2,"":3}
-        show=st.segmented_control("Show",["All","▲ Long","▼ Short / avoid","○ No position","– Not rated"],
-                                  default="All",key="rec_filter")
-        pick={"▲ Long":"Long","▼ Short / avoid":"Short / avoid","○ No position":"No position","– Not rated":"Not rated"}.get(show or "All")
-        shown=view if pick is None else view.loc[view.rec_position.eq(pick)]
-        shown=shown.assign(_r=shown.rec_position.map(rec_order),_c=shown.rec_conviction.map(conv_order)) \
-                   .sort_values(["_r","_c","market_cap"],ascending=[True,True,False])
-        data=screen_frame(shown)
-        st.markdown(f"**{len(data)}** companies, recommendations first (Long, then Short / avoid, by conviction), then by size. "
-                    "Click a column header to sort, or select a row to open the company.")
-        ev=st.dataframe(styled(data,["Recommendation","Status","Distress zone"]),column_config=SCREEN_CFG,hide_index=True,
-                        width="stretch",height=560,placeholder=MISSING,
-                        on_select="rerun",selection_mode="single-row",key="tbl_all")
-        selection_actions(ev,data,"tbl_all")
-        recs=shown.loc[shown.rec_position.isin(["Long","Short / avoid"]),
-                       ["ticker","name","sector","rec_position","rec_conviction","rec_summary","market_cap","BUY_score",
-                        "GPA_sector_pct","BM_sector_pct","SELL_flag_count","fiscal_year_end","price_asof"]] \
-                 .rename(columns={"ticker":"Ticker","name":"Company","sector":"Sector","rec_position":"Recommendation",
-                                  "rec_conviction":"Conviction","rec_summary":"Reason","market_cap":"Market cap (USD)",
-                                  "BUY_score":"Long score","GPA_sector_pct":"Profitability rank","BM_sector_pct":"Value rank",
-                                  "SELL_flag_count":"Risk checks triggered","fiscal_year_end":"FY end","price_asof":"Market cap date"})
-        export=shown[["ticker","name","sector","industry","rec_position","rec_conviction","market_cap","GPA","GPA_sector_pct","BM","BM_sector_pct",
-                      "BUY_score","BUY_candidate","STA","SNOA","Beneish_M","Altman_Z","Altman_zone",
-                      "SELL_flag_count","SELL_candidate","conflicting_signals"]].rename(columns={"rec_position":"recommendation","rec_conviction":"conviction"})
-        d1,d2=st.columns(2)
-        d1.download_button(f"Download buy / sell list ({len(recs)} companies, CSV)",recs.to_csv(index=False),
-                           "sp500_recommendations.csv","text/csv",type="primary",width="stretch",
-                           disabled=recs.empty)
-        d2.download_button("Download full screen (CSV)",export.to_csv(index=False),"sp500_screen.csv","text/csv",width="stretch")
+            show_chart(fig,520)
+            st.caption(f"The shaded corner uses the current settings: top {gpa_top}% for profitability and top {bm_top}% for cheapness. "
+                       f"A buy must also reach a combined score of {score}, have cash-backed profits and show no warning signs.")
+        else:st.info("Not enough companies with both ranks for this chart.")
     st.caption("Definitions, formulas and the data-quality audit are on the **Glossary & Data** page.")
 
 elif page=="Company Profile":
@@ -426,76 +439,41 @@ elif page=="Company Profile":
     cur=str(r.get("financial_currency") or "USD")
     eyebrow(f"{r.sector} · {r.industry}")
     st.title(f"{r['name']} ({ticker})")
-    status,tone=screen_status(r)
-    z_label,z_tone=altman_status(r.Altman_zone)
-    if bool(r.get("stale_statements",False)) and bool(r.industrial_applicable):
-        z_label,z_tone="– not scored (stale data)",NA
-    st.markdown(f"{badge(status,tone)} &nbsp; {badge('Altman: '+z_label,z_tone)} &nbsp; "
-                f"{badge('FY ending '+str(r.fiscal_year_end),NA)}")
+    ds,_=pr.data_status(r)
+    st.markdown(f":gray-badge[Data: {ds}] &nbsp; :gray-badge[Annual report: year ending {r.fiscal_year_end}] &nbsp; "
+                f":gray-badge[Market value {md(pr.money(r.market_cap))} on {r.price_asof}]")
+    findings=describe(r,base)
+    st.html(pr.bottom_line_html(r,findings,settings,P))
+    if str(r.get("share_class_of","")):
+        st.caption(f"Share class of {r.share_class_of}: the company is counted once in sector comparisons.")
+
     rev_g=change(n(r,"revenue"),n(r,"prior_revenue"))
     ni_g=change(n(r,"net_income"),n(r,"prior_net_income"))
     cf_g=change(n(r,"operating_cash_flow"),n(r,"prior_operating_cash_flow"))
-    yoy=lambda g:(fmt_pct(g,signed=True)+" vs prior FY") if np.isfinite(g) else None
+    yoy=lambda g:(fmt_pct(g,signed=True)+" vs prior year") if np.isfinite(g) else None
     a,b,c,d=st.columns(4)
-    a.metric("Market cap",fmt_money(n(r,"market_cap")),border=True,help=f"Quote snapshot {r.price_asof}.")
+    a.metric("Market value",fmt_money(n(r,"market_cap")),border=True,help=f"Quote snapshot {r.price_asof}.")
     b.metric("Revenue",fmt_money(n(r,"revenue"),cur),yoy(rev_g),border=True,help="Latest fiscal-year revenue; change vs the matched prior fiscal year.")
     c.metric("Net income",fmt_money(n(r,"net_income"),cur),yoy(ni_g),border=True,help="Change shown only when the prior-year figure is positive.")
     d.metric("Operating cash flow",fmt_money(n(r,"operating_cash_flow"),cur),yoy(cf_g),border=True)
 
-    st.subheader("Scorecard versus sector peers")
+    st.subheader("The evidence")
     if not bool(r.industrial_applicable):
-        st.info("Banks, insurers and REITs need specialist models: sector ranks, grades and accounting-risk checks are not assigned. Company ratios are still shown.")
+        st.info("Banks, insurers and REITs need specialist models, so this company isn't scored. Its figures are still shown below.")
     elif bool(r.get("stale_statements",False)):
-        st.warning(f"The latest annual statements (FY ending {r.fiscal_year_end}) are {int(r.statement_age_days)} days older than the market-cap quote, "
-                   "so this company is not ranked or screened until its data refreshes. Company ratios are still shown.")
-    if str(r.get("share_class_of","")):
-        st.caption(f"Share class of {r.share_class_of}: the issuer is counted once in sector benchmarks.")
-    rows=[]
-    for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M"]:
-        m=METRICS[key];p=n(r,key+"_sector_pct")
-        g,_=grade_from_percentile(p,m.higher_is_better)
-        if key=="Beneish_M" and bool(r.get("Beneish_outlier",False)):
-            g="● Review"
-        rows.append({"Metric":m.label,"Company":fmt_metric(key,n(r,key)),
-                     "Sector median":fmt_metric(key,n(r,key+"_sector_median")),
-                     "Standing":standing(p,m.higher_is_better),"Grade":g,
-                     "Better when":"↑ Higher" if m.higher_is_better else "↓ Lower",
-                     "Raw percentile":ordinal(p)})
-    # Altman is judged by absolute zones (not sector rank); show score, model and zone together.
-    z_txt=fmt_number(n(r,"Altman_Z"))
-    if np.isfinite(n(r,"Altman_Z")):z_txt+=" (Z)" if str(r.Altman_model).startswith("Original") else " (Z″)"
-    rows.append({"Metric":METRICS["Altman_Z"].label,"Company":z_txt,"Sector median":MISSING,
-                 "Standing":np.nan,"Grade":altman_status(r.Altman_zone)[0].split(":")[0],"Better when":"↑ Higher",
-                 "Raw percentile":"zone-based"})
-    card=pd.DataFrame(rows)
-    st.dataframe(styled(card,["Grade"]),hide_index=True,width="stretch",placeholder=MISSING,
-        column_config={"Metric":CC.TextColumn("Metric",width=230),
-            "Company":CC.TextColumn(ticker,help="This company's latest annual value."),
-            "Sector median":CC.TextColumn("Sector median",help=f"Median across scored {r.sector} companies in the full S&P 500 dataset."),
-            "Standing":CC.ProgressColumn("Standing in sector",min_value=0,max_value=100,format="%.0f",width="medium",help="Direction-adjusted sector percentile: 100 = most favourable. For accruals, net operating assets and the M-score, lower raw values rank higher."),
-            "Grade":CC.TextColumn("Grade",help="▲ Strong = top third of sector · ● Neutral = middle third · ▼ Weak = bottom third (direction-adjusted). Altman uses its published zones: Z distress < 1.81, grey 1.81–2.99; Z″ distress < 1.1, grey 1.1–2.6."),
-            "Better when":CC.TextColumn("Better when",width="small"),
-            "Raw percentile":CC.TextColumn("Raw percentile",help="Unadjusted sector percentile of the metric value.",width="small")})
-    st.caption(f"Grades for accruals, net operating assets and the M-score are inverted so ▲ Strong always means favourable "
-               f"(lower raw value than peers). Beneish screen cutoff: {beneish:.2f}. — = not available.")
-    if pd.isna(r.SNOA):st.caption(SNOA_NOTE)
-    elif str(r.get("SNOA_basis","")).startswith("Partial"):
-        st.caption(f"Net operating assets (SNOA) uses partial inputs: {str(r.SNOA_basis).split(': ',1)[1]}.")
-    with st.expander("What do these metrics mean?"):
+        st.warning(f"The latest annual figures (year ending {r.fiscal_year_end}) are {int(r.statement_age_days)} days older than the market value, "
+                   "so this company isn't scored until its data refreshes. Its figures are still shown below.")
+    else:
+        st.caption(f"Each answer has two parts: a fixed test where one exists, and how {ticker} compares with the other "
+                   f"{r.sector} companies. The dots are those peers, the line marks the typical peer, and the shaded side is the better side.")
+        st.html(pr.evidence_html(pr.evidence_rows(r,base,settings),P))
+    with st.expander("What do these measures mean?"):
         for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M","Altman_Z"]:
             m=METRICS[key];st.markdown(f"**{m.label}** — {m.help} *{m.direction}.*")
+        st.caption(SNOA_NOTE)
 
-    st.subheader("Accounting-risk checks")
-    checks=risk_checks(r,settings)
-    st.markdown(tone_counts_line(checks)+(f" · risk-flagged when ≥ {riskcount}" ))
-    cols=st.columns(4)
-    for col,chk in zip(cols,checks):
-        with col.container(border=True):
-            st.markdown(f"{badge(chk['label'],chk['tone'])}")
-            st.markdown(f"**{chk['check']}**")
-            st.caption(md(chk["detail"]))
-
-    t1,t2=st.tabs(["Statement trends","Financial statements"])
+    st.subheader("Financial statements")
+    t1,t2=st.tabs(["Year-over-year charts","Statement lines"])
     with t1:
         def trend(items,title):
             figs=[]
@@ -564,9 +542,9 @@ elif page=="Company Profile":
         st.caption("Market capitalization and latest FY figures use different dates. Do not treat the derived ratios as historical backtests.")
 
 elif page=="Research Desk":
-    eyebrow("Long and bearish cases")
+    eyebrow("Buy and avoid cases")
     st.title("Research Desk")
-    st.caption("Rule-based long / short recommendations from the accounting evidence · verify against the filings before acting")
+    st.caption("A rule-based call from the accounting evidence, with an editable investment case · verify against the filings before acting")
     def shortlist(df,cols,cfg,title,key,empty):
         st.markdown(f"**{title}**")
         if df.empty:st.info(empty);return
@@ -580,9 +558,9 @@ elif page=="Research Desk":
                      height=table_height(len(data)),placeholder=MISSING,
                      on_select=pick,selection_mode="single-row",key=key)
     a,b=st.columns(2)
-    with a:shortlist(screen_frame(longs),["Ticker","Company","Long score"],SCREEN_CFG,"▲ Long research shortlist","rs_long",
+    with a:shortlist(screen_frame(longs),["Ticker","Company","Long score"],SCREEN_CFG,"▲ Buy candidates","rs_long",
                      "No qualifying companies. Adjust the filters.")
-    with b:shortlist(screen_frame(shorts),["Ticker","Company","Risk flags"],SCREEN_CFG,"▼ Accounting-risk shortlist","rs_short",
+    with b:shortlist(screen_frame(shorts),["Ticker","Company","Risk flags"],SCREEN_CFG,"▼ Companies to avoid","rs_short",
                      "No qualifying companies. Adjust the filters.")
     st.caption("Select a row to analyse that company below, or search for any company.")
     st.divider()
@@ -591,13 +569,9 @@ elif page=="Research Desk":
     findings=describe(r,base)
     case=investment_case(r,findings,settings)
     st.subheader(f"{r['name']} · {ticker}")
-    rec_tone={"Long":GOOD,"Short / avoid":BAD}.get(case["position"],NEUTRAL)
-    rec_icon={"Long":"▲","Short / avoid":"▼"}.get(case["position"],"●")
-    with st.container(border=True):
-        st.markdown(f"#### Recommendation &nbsp; {badge(rec_icon+' '+case['headline'],rec_tone)}")
-        st.markdown(md(case["summary"]))
-        st.caption("Rule-based call from the accounting screens and valuation below (current screen settings). "
-                   "No price target or return forecast. Verify against the 10-K before relying on it.")
+    st.html(pr.bottom_line_html(r,findings,settings,P))
+    st.caption("Rule-based call from the accounting screens and valuation below (current screen settings). "
+               "No price target or return forecast. Verify against the 10-K before relying on it.")
     ps,sps=findings["ps"],findings["sector_ps"]
     vs=None
     if np.isfinite(ps) and np.isfinite(sps) and sps>0:
@@ -670,7 +644,8 @@ elif page=="Research Desk":
     positions=["Long","Short / avoid","No position","Under review"]
     with st.container(border=True):
         pos_value=drafts.get("position",generated["position"])
-        position=st.selectbox("Position",positions,index=positions.index(pos_value) if pos_value in positions else 2,
+        position=st.selectbox("Call",positions,index=positions.index(pos_value) if pos_value in positions else 2,
+                              format_func=lambda p_:pr.CALL_NAME.get(p_,p_),
                               key=f"rd_position_{ticker}_{generated['position']}")
         if position!=generated["position"]:drafts["position"]=position
         else:drafts.pop("position",None)
@@ -684,9 +659,9 @@ elif page=="Research Desk":
             st.caption("Analyst-edited: "+", ".join(edited))
             if st.button("Reset to the generated case",key=f"rd_reset_{ticker}"):
                 drafts.clear();st.rerun()
-    sections=dict(position=position,thesis=thesis,catalyst=catalyst,
+    sections=dict(position=pr.CALL_NAME.get(position,position),thesis=thesis,catalyst=catalyst,
                   counterargument=counter,invalidation=invalid,filing_reference=filing,
-                  conviction=case["conviction"] if position==case["position"] else "",
+                  conviction=pr.EVIDENCE.get(case["conviction"],"").replace(" evidence","") if position==case["position"] else "",
                   edited=", ".join(sorted(drafts)) or "none (generated case)")
     require=[thesis.strip(),catalyst.strip(),counter.strip(),invalid.strip(),filing.strip()]
     if not all(require):

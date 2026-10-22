@@ -178,7 +178,7 @@ def report(row,findings,assumptions=None,analyst=None):
     position=analyst.get("position","") or "Not yet provided"
     conviction=analyst.get("conviction","")
     entries += ["","## Recommendation",
-        f"**{position}**" + (f" · {conviction} conviction" if conviction else ""),"",
+        f"**{position}**" + (f" · {conviction} evidence" if conviction else ""),"",
         f"*Sections edited by the analyst: {analyst.get('edited','none (generated case)')}. Unedited sections are generated "
         "from the screen evidence above.*","",
         "## Investment case"]
