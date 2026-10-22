@@ -1464,8 +1464,8 @@
   },
   "schema_refresh_pending": 0,
   "sec_last_check": {
-    "ABNB": "2026-10-21|2025-12-31|failed",
-    "ACN": "2026-10-21|2025-08-31|failed",
+    "ABNB": "2026-10-22|2025-12-31|failed",
+    "ACN": "2026-10-22|2025-08-31|failed",
     "ADP": "2026-10-21|2026-06-30|failed",
     "AEE": "2026-10-21|2025-12-31|failed",
     "AEP": "2026-10-21|2025-12-31|failed",
@@ -1476,15 +1476,15 @@
     "AZO": "2026-10-21|2025-08-31|failed",
     "BIIB": "2026-10-21|2025-12-31|failed",
     "BKNG": "2026-10-21|2025-12-31|failed",
-    "GOOG": "2026-10-21|2025-12-31|failed",
-    "GOOGL": "2026-10-21|2025-12-31|failed",
-    "LNT": "2026-10-21|2025-12-31|failed"
+    "GOOG": "2026-10-22|2025-12-31|failed",
+    "GOOGL": "2026-10-22|2025-12-31|failed",
+    "LNT": "2026-10-22|2025-12-31|failed"
   },
   "sec_status": {
     "aborted": true,
     "contact_set": true,
-    "date": "2026-10-21",
-    "due": 91,
+    "date": "2026-10-22",
+    "due": 101,
     "failed": 5,
     "filled": 0,
     "last_error": "InvalidHeader: Invalid leading whitespace, reserved character(s), or return character(s) in header value: 'Vishal Pancholi\\r\\nvpancholi808@gmail.com'",
@@ -1492,18 +1492,18 @@
     "nothing_to_fill": 0
   },
   "stale_refresh_last_attempt": {
-    "ACN": "2026-10-21",
-    "AZO": "2026-10-21",
-    "COST": "2026-10-21",
-    "CPRT": "2026-10-21",
-    "FDS": "2026-10-21",
-    "FERG": "2026-10-21",
-    "JBL": "2026-10-21",
-    "MU": "2026-10-21",
-    "SKYD": "2026-10-21"
+    "ACN": "2026-10-22",
+    "AZO": "2026-10-22",
+    "COST": "2026-10-22",
+    "CPRT": "2026-10-22",
+    "FDS": "2026-10-22",
+    "FERG": "2026-10-22",
+    "JBL": "2026-10-22",
+    "MU": "2026-10-22",
+    "SKYD": "2026-10-22"
   },
   "statement_completeness": 0.8924302788844621,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-10-21T22:34:26+00:00"
+  "updated_at": "2026-10-22T01:41:19+00:00"
 }
