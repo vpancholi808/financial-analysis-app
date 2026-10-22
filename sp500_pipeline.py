@@ -17,7 +17,7 @@ import pandas as pd
 import requests
 
 from build_universe import extract_company, issuer_key
-from sec_edgar import SecClient, fill_from_sec, needs_sec, TRIGGER_FIELDS
+from sec_edgar import SecClient, fill_from_sec, needs_sec, redact, TRIGGER_FIELDS
 from finance_models import GICS_SECTORS, UNIVERSE_COLUMNS
 
 ROOT = Path(__file__).resolve().parent
@@ -189,7 +189,7 @@ def sec_pass(rows, last_checks, today=None, client=None, limit=250, status=None,
             facts = client.company_facts(symbol)
         except Exception as exc:
             status["failed"] += 1
-            status["last_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+            status["last_error"] = redact(f"{type(exc).__name__}: {str(exc)[:160]}")
             log.append(f"SEC FETCH FAILED {symbol} {status['last_error']}")
             last_checks[symbol] = f"{today}|{rows[symbol].get('fiscal_year_end')}|failed"
             if status["failed"] == i + 1 >= abort_after:
@@ -282,7 +282,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
             for line in sec_pass(rows, sec_checks, status=sec_status):
                 print(line, flush=True)
         except Exception as exc:   # never lose Yahoo data because SEC is unavailable
-            sec_status.update(aborted=True, last_error=f"{type(exc).__name__}: {str(exc)[:160]}")
+            sec_status.update(aborted=True, last_error=redact(f"{type(exc).__name__}: {str(exc)[:160]}"))
             print("SEC PASS ERROR", sec_status["last_error"], flush=True)
     ordered = [rows[s] for s in members_map if s in rows]
     good = pd.DataFrame(ordered,columns=UNIVERSE_COLUMNS)

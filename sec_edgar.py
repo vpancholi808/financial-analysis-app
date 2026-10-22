@@ -15,6 +15,7 @@ descriptive User-Agent with a contact address and at most 10 requests/second).
 from __future__ import annotations
 
 import os
+import re
 import time
 
 import numpy as np
@@ -295,6 +296,21 @@ def needs_sec(row: dict, today=None, stale_after_days: int = 405) -> bool:
     return any(not _finite(row.get(f)) for f in TRIGGER_FIELDS)
 
 
+def clean_user_agent(value: str) -> str:
+    """One-line header value: a pasted contact often contains a line break
+    (e.g. "Name\r\nemail"), which HTTP headers cannot carry."""
+    return " ".join(str(value or "").split())
+
+
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(\.[\w-]+)+")
+
+
+def redact(text: str) -> str:
+    """Error text is saved to a public repository: never keep the contact."""
+    text = re.sub(r"header value: .*", "header value: <SEC_USER_AGENT>", str(text))
+    return _EMAIL.sub("<email>", text)
+
+
 def to_sec_symbol(ticker: str) -> str:
     return str(ticker).upper().replace(".", "-")
 
@@ -305,7 +321,7 @@ class SecClient:
     def __init__(self, user_agent: str | None = None, pause: float = 0.15, session=None):
         import requests
         self.session = session or requests.Session()
-        ua = (user_agent or os.environ.get("SEC_USER_AGENT") or "").strip() or DEFAULT_USER_AGENT
+        ua = clean_user_agent(user_agent or os.environ.get("SEC_USER_AGENT") or "") or DEFAULT_USER_AGENT
         self.contact_set = ua != DEFAULT_USER_AGENT
         self.session.headers.update({"User-Agent": ua,
                                      "Accept-Encoding": "gzip, deflate"})
