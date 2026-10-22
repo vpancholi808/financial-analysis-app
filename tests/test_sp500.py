@@ -29,7 +29,7 @@ def test_data_completeness_does_not_impute_zeros():
 def test_dashboard_contains_charts_and_anomaly_report():
     from pathlib import Path
     source=(Path(__file__).resolve().parents[1]/"app.py").read_text()
-    assert "Value versus profitability" in source
+    assert "Where each company ranks in its own sector" in source
     assert "Data quality and detailed methodology" in source
     assert "sp500_constituents.csv" in source
     assert "Export full audit" in source

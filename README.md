@@ -52,6 +52,12 @@ BUY candidates require sufficient and above-threshold **GPA and B/M sector perce
 
 The investment research desk distinguishes actual financial facts, reported abnormalities, unavailable model inputs and source fiscal periods, and **pre-fills a rule-based recommendation** (`investment_case` in `research_workbench.py`): **Long** when the company passes the long screen with positive, cash-backed earnings and no accounting-risk check; **Short / avoid** when enough independent risk checks trigger and it is not a long candidate; otherwise **No position** with the reason. Conviction (High/Moderate/Low) rises when valuation (P/S vs sector median), growth and accruals agree. The thesis, catalyst (next annual report), strongest counterargument, measurable invalidation tests and SEC 10-K link are generated from the same evidence and can be edited; the working paper records which sections the analyst edited. No price target or return forecast is produced. The same rule fills a **Recommendation** column (with conviction) in every screener table; the All companies tab filters by recommendation and exports the buy / sell list as `sp500_recommendations.csv`.
 
+## How results are presented
+
+- **Screener**: a one-sentence summary and a bar splitting all companies into Buy / Avoid / No clear signal / Not rated, then four tabs: **Ideas** (the strongest five buy and avoid ideas as cards with a one-line reason), **All companies** (filter by call, search, optional extra columns, CSV downloads), **By sector** (each sector's ideas and typical values; sectors are never compared against each other) and **Map** (profitability rank against value rank, with the buy zone shaded).
+- **Company profile**: a bottom-line box (call, evidence strength, one sentence, up to three reasons for and against), then six questions. Each answer gives the fixed test where one exists ("Are profits backed by real cash? ✓ Yes") and the peer comparison ("less cash-backed than 68% of peers") with a strip of all sector peers.
+- Wording lives in `presentation.py`; it only reads the computed screen and never changes a calculation. Missing values are shown as "can't be measured", never as zero.
+
 ## Reproducible validation
 
 ```bash
