@@ -139,6 +139,8 @@ def open_profile_on_click(name,tickers):
         if state is None:return
         sel=state.get("selection",{}) if hasattr(state,"get") else getattr(state,"selection",{})
         rows=list(sel.get("rows",[]) or []);points=list(sel.get("points",[]) or [])
+        cells=list(sel.get("cells",[]) or [])
+        if not rows and cells:rows=[int(cells[0][0])]   # a click on any cell selects that cell's row
         t=None
         if rows and rows[0]<len(tickers):t=tickers[rows[0]]
         elif points:
@@ -379,9 +381,9 @@ if page=="S&P 500 Screener":
         else:
             st.dataframe(styled(data[cols],["Call","Distress zone"]),column_config=cfg,hide_index=True,width="stretch",
                          height=table_height(len(data)),placeholder=MISSING,
-                         on_select=open_profile_on_click("tbl_all",list(data.Ticker)),selection_mode="single-row",
+                         on_select=open_profile_on_click("tbl_all",list(data.Ticker)),selection_mode=["single-row","single-cell"],
                          key=click_key("tbl_all"))
-            st.caption("Click a row to open that company's profile.")
+            st.caption("Click any company in the table to open its profile.")
         calls=view.loc[view.rec_position.isin(["Long","Short / avoid"])].assign(
             _r=lambda d:d.rec_position.map(rec_order),_c=lambda d:d.rec_conviction.map(conv_rank)).sort_values(["_r","_c"])
         recs=pd.DataFrame({"Ticker":calls.ticker,"Company":calls["name"],"Sector":calls.sector,
