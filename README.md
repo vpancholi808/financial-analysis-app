@@ -56,6 +56,8 @@ The investment research desk distinguishes actual financial facts, reported abno
 
 - **Screener**: a one-sentence summary and a bar splitting all companies into Buy / Avoid / No clear signal / Not rated, then four tabs: **Ideas** (the strongest five buy and avoid ideas as cards with a one-line reason), **All companies** (filter by call, search, optional extra columns, CSV downloads), **By sector** (each sector's ideas and typical values; sectors are never compared against each other) and **Map** (profitability rank against value rank, with the buy zone shaded).
 - **Company profile**: a bottom-line box (call, evidence strength, one sentence, up to three reasons for and against), then six questions. Each answer gives the fixed test where one exists ("Are profits backed by real cash? ✓ Yes") and the peer comparison ("less cash-backed than 68% of peers") with a strip of all sector peers.
+- The company page ends with a short investment-case summary (call, valuation, what to watch, what would change the call) and a download of the full working paper; the editable case and valuation scenarios sit in one collapsed section. The former Research Desk page is merged into it.
+- Clicking a row in All companies, a dot on the Map or a card's Open button goes straight to that company's profile.
 - Wording lives in `presentation.py`; it only reads the computed screen and never changes a calculation. Missing values are shown as "can't be measured", never as zero.
 
 ## Reproducible validation
@@ -70,7 +72,7 @@ streamlit run app.py
 - `.github/workflows/financial-audit.yml`: automated unit/integration tests plus a universe-wide independent arithmetic and completeness audit, keeping an `audit_summary.json` and `metric_audit.csv` artifact.
 - `tests/test_advanced_models.py`: hand-reconciled, original definitions and missing-data guards.
 - `tests/test_sec_spotchecks.py`: anchored annual FY2025 Apple and FY2026 NVIDIA numbers compared with actual annual SEC 10-K figures.
-- `tests/test_streamlit_app.py`: page-load checks for the Screener, Company Profile, Research Desk and Glossary & Data pages.
+- `tests/test_streamlit_app.py`: page-load checks for the Screener, Company Profile and Glossary & Data pages.
 - `tests/test_ui_format.py`: display helpers in `ui_format.py` (units, grades, missing values shown as "—" and never as zero).
 - `audit_data.py`: coverage counts, individual missing fields, currency mismatches, statement staleness, negative/inconsistent assets and common-versus-total-equity reconciliation flags.
 

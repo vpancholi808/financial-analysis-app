@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "universe.csv"
 
 @pytest.mark.parametrize("page", [
-    "S&P 500 Screener", "Company Profile", "Research Desk", "Glossary & Data",
+    "S&P 500 Screener", "Company Profile", "Glossary & Data",
 ])
 def test_streamlit_render_with_saved_data(page):
     from streamlit.testing.v1 import AppTest
@@ -39,14 +39,24 @@ def test_research_draft_does_not_carry_over_between_companies():
     if not {"AAPL", "MSFT"} <= tickers:
         pytest.skip("Fixture companies missing from the saved universe")
     at = AppTest.from_file(str(ROOT / "app.py")).run(timeout=90)
-    at.sidebar.radio[0].set_value("Research Desk").run(timeout=90)
-    at.selectbox(key="research_select").set_value("AAPL").run(timeout=90)
+    at.sidebar.radio[0].set_value("Company Profile").run(timeout=90)
+    at.selectbox(key="overview_select").set_value("AAPL").run(timeout=90)
     thesis = lambda: next(t for t in at.text_area if t.label == "Investment thesis")
     generated_aapl = thesis().value
     assert generated_aapl and "Apple" in generated_aapl          # pre-filled from the analysis
     thesis().set_value("Apple-specific thesis").run(timeout=90)
-    at.selectbox(key="research_select").set_value("MSFT").run(timeout=90)
+    at.selectbox(key="overview_select").set_value("MSFT").run(timeout=90)
     assert thesis().value != "Apple-specific thesis" and "Microsoft" in thesis().value
-    at.selectbox(key="research_select").set_value("AAPL").run(timeout=90)
+    at.selectbox(key="overview_select").set_value("AAPL").run(timeout=90)
     assert thesis().value == "Apple-specific thesis"
     assert not at.exception, [str(x.message) for x in at.exception]
+
+
+def test_research_desk_page_is_gone_and_profile_has_the_case():
+    from streamlit.testing.v1 import AppTest
+    at = AppTest.from_file(str(ROOT / "app.py")).run(timeout=90)
+    assert "Research Desk" not in at.sidebar.radio[0].options
+    at.sidebar.radio[0].set_value("Company Profile").run(timeout=90)
+    assert any(t.label == "Investment thesis" for t in at.text_area)
+    assert any("working paper" in b.label for b in at.get("download_button"))
+    assert not at.exception

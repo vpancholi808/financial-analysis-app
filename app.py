@@ -41,9 +41,9 @@ from ui_format import (METRICS, MISSING, TONE_HEX, GOOD, BAD, CAUTION, NEUTRAL, 
                        verdict_tone, badge, tone_css, risk_checks)
 
 ROOT=Path(__file__).resolve().parent
-PAGES=["S&P 500 Screener","Company Profile","Research Desk","Glossary & Data"]
-PAGE_CAPTIONS=["Buy and avoid ideas, every company, sectors, map","One company, answer first",
-               "Build an evidence-based case","Definitions, sources, data quality"]
+PAGES=["S&P 500 Screener","Company Profile","Glossary & Data"]
+PAGE_CAPTIONS=["Buy and avoid ideas, every company, sectors, map",
+               "One company: the call, the evidence, the investment case","Definitions, sources, data quality"]
 ACCENT="#3E7FE6"; PRIOR="#9AA5B1"
 
 st.set_page_config(page_title="S&P 500 | Financial Research",page_icon="📈",layout="wide",
@@ -100,9 +100,9 @@ def style_chart(fig,height=None):
     if height:fig.update_layout(height=height)
     return fig
 
-def show_chart(fig,height=None):
+def show_chart(fig,height=None,**kw):
     st.plotly_chart(style_chart(fig,height),width="stretch",theme="streamlit",
-                    config={"displayModeBar":False})
+                    config={"displayModeBar":False},**kw)
 
 def table_height(rows,cap=560):
     return int(min(cap,40+35*max(rows,1)))
@@ -130,19 +130,27 @@ def go_to(ticker,page=None):
     for k in ("overview_select","research_select"):st.session_state.pop(k,None)
     if page:st.session_state["nav"]=page
 
-def selection_actions(event,data,key):
-    """When a table row is selected, offer jumps to the profile / research pages."""
-    try:rows=list(event.selection.rows)
-    except AttributeError:
-        try:rows=list(event["selection"]["rows"])
-        except (KeyError,TypeError):rows=[]
-    if not rows:
-        st.caption("Tip: select a row to open that company's profile or research page.")
-        return
-    t=str(data.iloc[rows[0]]["Ticker"])
-    a,b,_=st.columns([1,1,2])
-    a.button(f"Open {t} profile →",key=key+"_p",on_click=go_to,args=(t,"Company Profile"),width="stretch")
-    b.button(f"Research {t} →",key=key+"_r",on_click=go_to,args=(t,"Research Desk"),width="stretch")
+def open_profile_on_click(name,tickers):
+    """Callback for a table or chart selection: open that company's profile.
+    The widget key carries a counter that changes on every jump, so the
+    selection is cleared and the same company can be clicked again later."""
+    def _cb():
+        state=st.session_state.get(click_key(name))
+        if state is None:return
+        sel=state.get("selection",{}) if hasattr(state,"get") else getattr(state,"selection",{})
+        rows=list(sel.get("rows",[]) or []);points=list(sel.get("points",[]) or [])
+        t=None
+        if rows and rows[0]<len(tickers):t=tickers[rows[0]]
+        elif points:
+            cd=points[0].get("customdata") if isinstance(points[0],dict) else None
+            t=cd[0] if cd else None
+        if t:
+            st.session_state["click_nonce"]=st.session_state.get("click_nonce",0)+1
+            go_to(str(t),"Company Profile")
+    return _cb
+
+def click_key(name):
+    return f"{name}_{st.session_state.get('click_nonce',0)}"
 
 def tone_counts_line(items):
     flagged=sum(i["tone"]==BAD for i in items);na=sum(i["tone"]==NA for i in items)
@@ -267,7 +275,7 @@ SCREEN_CFG={**cfg_common(),
     "Recommendation":CC.TextColumn("Recommendation",width="medium",
         help="Rule-based call with conviction. ▲ Long: passes the long screen with positive, cash-backed earnings and no risk check. "
              "▼ Short / avoid: enough independent accounting-risk checks trigger. ○ No position: neither, or both. "
-             "– Not rated: bank, insurer, REIT or stale data. Full reasoning on the Research Desk."),
+             "– Not rated: bank, insurer, REIT or stale data. Click a row for the full reasoning."),
     "Status":CC.TextColumn("Screen result",help="▲ passes the long screen · ▼ risk-flagged · ◆ both · ● neither · – bank/insurer/REIT (not scored)."),
     "GPA":pct_col("GPA","Gross profitability"),
     "GPA rank":rank_col("Profitability rank","Gross profitability (GPA) percentile within its sector; 100 = most profitable."),
@@ -369,10 +377,11 @@ if page=="S&P 500 Screener":
              "FY end":CC.TextColumn("FY end",width="small")}
         if data.empty:st.info("No companies match. Clear the search or pick another filter.")
         else:
-            ev=st.dataframe(styled(data[cols],["Call","Distress zone"]),column_config=cfg,hide_index=True,width="stretch",
-                            height=table_height(len(data)),placeholder=MISSING,
-                            on_select="rerun",selection_mode="single-row",key="tbl_all")
-            selection_actions(ev,data,"tbl_all")
+            st.dataframe(styled(data[cols],["Call","Distress zone"]),column_config=cfg,hide_index=True,width="stretch",
+                         height=table_height(len(data)),placeholder=MISSING,
+                         on_select=open_profile_on_click("tbl_all",list(data.Ticker)),selection_mode="single-row",
+                         key=click_key("tbl_all"))
+            st.caption("Click a row to open that company's profile.")
         calls=view.loc[view.rec_position.isin(["Long","Short / avoid"])].assign(
             _r=lambda d:d.rec_position.map(rec_order),_c=lambda d:d.rec_conviction.map(conv_rank)).sort_values(["_r","_c"])
         recs=pd.DataFrame({"Ticker":calls.ticker,"Company":calls["name"],"Sector":calls.sector,
@@ -407,7 +416,8 @@ if page=="S&P 500 Screener":
             plotted["Call"]=plotted.rec_position.map({"Long":"Buy","Short / avoid":"Avoid"}).fillna("No clear signal")
             plotted["GPA (%)"]=plotted.GPA*100
             order=["Buy","Avoid","No clear signal"]
-            st.markdown("Each dot is a company, placed by where it ranks **within its own sector**. Buys come from the shaded top-right corner.")
+            st.markdown("Each dot is a company, placed by where it ranks **within its own sector**. Buys come from the shaded top-right corner. "
+                        "Click a dot to open that company's profile.")
             fig=px.scatter(plotted,x="BM_sector_pct",y="GPA_sector_pct",color="Call",symbol="Call",
                     category_orders={"Call":order},
                     color_discrete_map={"Buy":TONE_HEX[GOOD],"Avoid":TONE_HEX[BAD],"No clear signal":TONE_HEX[NEUTRAL]},
@@ -426,7 +436,7 @@ if page=="S&P 500 Screener":
             fig.add_annotation(x=102,y=105,xanchor="right",yanchor="top",showarrow=False,
                                text="Buy zone",font=dict(size=12,color=TONE_HEX[GOOD]))
             fig.update_xaxes(range=[-2,103]);fig.update_yaxes(range=[-2,106])
-            show_chart(fig,520)
+            show_chart(fig,520,on_select=open_profile_on_click("map",[]),selection_mode="points",key=click_key("map"))
             st.caption(f"The shaded corner uses the current settings: top {gpa_top}% for profitability and top {bm_top}% for cheapness. "
                        f"A buy must also reach a combined score of {score}, have cash-backed profits and show no warning signs.")
         else:st.info("Not enough companies with both ranks for this chart.")
@@ -471,6 +481,97 @@ elif page=="Company Profile":
         for key in ["GPA","BM","ROA","CFOA","STA","SNOA","Beneish_M","Altman_Z"]:
             m=METRICS[key];st.markdown(f"**{m.label}** — {m.help} *{m.direction}.*")
         st.caption(SNOA_NOTE)
+
+    st.subheader("Investment case")
+    case=investment_case(r,findings,settings)
+    ps,sps=findings["ps"],findings["sector_ps"]
+    call_txt=pr.CALL_NAME.get(case["position"],case["position"])
+    ev_txt=pr.evidence_label(case["position"],case["conviction"])
+    val_txt=MISSING
+    if np.isfinite(ps) and np.isfinite(sps) and sps>0:
+        val_txt=(f"{ps:.1f}× sales against {pr.a_an(r.sector)} typical of {sps:.1f}× "
+                 f"({abs(ps/sps-1)*100:.0f}% {'cheaper' if ps<sps else 'dearer'})")
+        if np.isfinite(findings["earnings_yield"]):val_txt+=f"; earnings yield {fmt_pct(findings['earnings_yield'])}"
+    watch=str(case["catalyst"]).split(":")[0].replace("The next annual report","Next annual report").rstrip(".")
+    lines=[f"**Call:** {call_txt}"+(f" · {ev_txt}" if ev_txt else ""),f"**Valuation:** {val_txt}",f"**What to watch:** {watch}"]
+    if case["position"]=="Long":
+        lines.append(f"**What would change the call:** profitability or cheapness drops out of the sector's top "
+                     f"{gpa_top}% / {bm_top}%, or {riskcount} or more warning signs appear")
+    elif case["position"]=="Short / avoid":
+        lines.append(f"**What would change the call:** the next annual report shows fewer than {riskcount} warning signs")
+    elif bool(r.get("scoreable",True)):
+        lines.append(f"**What would trigger a call:** buy needs the sector's top {gpa_top}% for profitability and top {bm_top}% "
+                     f"for cheapness; avoid needs {riskcount} or more warning signs")
+    with st.container(border=True):
+        st.markdown(md("\n\n".join(lines)))
+    with st.expander("Edit the case and try valuation scenarios"):
+        st.markdown("**What if the market valued its sales differently?** Editable sales multiples, not forecasts or a price target.")
+        low,mid,high=st.columns(3)
+        with low:bear=st.number_input("Bear case P/S",min_value=0.1,value=2.0,step=0.5,key="ps_bear")
+        with mid:base_multiple=st.number_input("Base case P/S",min_value=0.1,value=4.0,step=0.5,key="ps_base")
+        with high:bull=st.number_input("Bull case P/S",min_value=0.1,value=6.0,step=0.5,key="ps_bull")
+        scen=scenario(r,[("Bear",bear),("Base",base_multiple),("Bull",bull)])
+        chart=scen.loc[scen["Implied change"].notna()].copy()
+        if len(chart):
+            chart["Implied change (%)"]=chart["Implied change"]*100
+            colors=[TONE_HEX[GOOD] if v>=0 else TONE_HEX[BAD] for v in chart["Implied change (%)"]]
+            fig=go.Figure(go.Bar(x=chart.Scenario,y=chart["Implied change (%)"],marker_color=colors,
+                                 text=[fmt_pct(v,1,signed=True) for v in chart["Implied change"]],textposition="outside",
+                                 cliponaxis=False,customdata=chart["Sales multiple"],
+                                 hovertemplate="%{x} case · %{customdata:.1f}× sales<br>%{y:+.1f}% vs today's market cap<extra></extra>"))
+            fig.add_hline(y=0,line_width=1,line_color=PRIOR)
+            fig.update_layout(title="Implied market-cap change versus today",yaxis_title="Change vs current market cap (%)",showlegend=False)
+            c1,c2=st.columns([3,2])
+            with c1:show_chart(fig,330)
+            with c2:
+                st.markdown(" ")
+                st.dataframe(pd.DataFrame({"Scenario":scen.Scenario,"P/S":[fmt_multiple(v) for v in scen["Sales multiple"]],
+                                           "Implied market cap":[fmt_money(v) for v in scen["Implied market cap"]],
+                                           "vs today":[fmt_pct(v,1,signed=True) for v in scen["Implied change"]]}),
+                             hide_index=True,width="stretch")
+                st.caption(md(f"Today's market cap: {fmt_money(n(r,'market_cap'))} · latest annual revenue: {fmt_money(n(r,'revenue'))} · "
+                              f"current P/S {fmt_multiple(ps)} (sector median {fmt_multiple(sps)}). A scenario at the current P/S implies 0% change."))
+        st.caption("Revenue is annual historical data; market cap is a recent snapshot. Neither the multiples nor implied changes account for new earnings, share issuance or dilution.")
+
+        st.markdown("**Your investment case** (pre-filled; edits are kept for this company)")
+        # Drafts are stored per company, so text written for one ticker can never
+        # appear in (or be exported with) another company's working paper. Only
+        # analyst edits are stored; untouched fields follow the generated case.
+        drafts=st.session_state.setdefault("research_drafts",{}).setdefault(ticker,{})
+        generated={"position":case["position"],"thesis":case["thesis"],"catalyst":case["catalyst"],
+                   "counter":case["counterargument"],"invalid":case["invalidation"],"filing":case["filing_reference"]}
+        def draft_field(widget,field,label,**kw):
+            gen=generated[field]
+            v=widget(label,value=drafts.get(field,gen),key=f"rd_{field}_{ticker}_{hashlib.md5(gen.encode()).hexdigest()[:8]}",**kw)
+            if v!=gen:drafts[field]=v
+            else:drafts.pop(field,None)
+            return v
+        positions=["Long","Short / avoid","No position","Under review"]
+        with st.container(border=True):
+            pos_value=drafts.get("position",generated["position"])
+            position=st.selectbox("Call",positions,index=positions.index(pos_value) if pos_value in positions else 2,
+                                  format_func=lambda p_:pr.CALL_NAME.get(p_,p_),
+                                  key=f"rd_position_{ticker}_{generated['position']}")
+            if position!=generated["position"]:drafts["position"]=position
+            else:drafts.pop("position",None)
+            thesis=draft_field(st.text_area,"thesis","Investment thesis",height=170)
+            catalyst=draft_field(st.text_area,"catalyst","Catalyst and expected timing",height=80)
+            counter=draft_field(st.text_area,"counter","Strongest counterargument",height=95)
+            invalid=draft_field(st.text_area,"invalid","What evidence would invalidate the thesis?",height=80)
+            filing=draft_field(st.text_input,"filing","SEC filing or issuer annual-report URL")
+            edited=sorted(drafts)
+            if edited:
+                st.caption("Analyst-edited: "+", ".join(edited))
+                if st.button("Reset to the generated case",key=f"rd_reset_{ticker}"):
+                    drafts.clear();st.rerun()
+    sections=dict(position=pr.CALL_NAME.get(position,position),thesis=thesis,catalyst=catalyst,
+                  counterargument=counter,invalidation=invalid,filing_reference=filing,
+                  conviction=pr.EVIDENCE.get(case["conviction"],"").replace(" evidence","") if position==case["position"] else "",
+                  edited=", ".join(sorted(drafts)) or "none (generated case)")
+    assumptions={"Bear P/S":bear,"Base P/S":base_multiple,"Bull P/S":bull}
+    st.download_button("Download the full working paper",report(r,findings,assumptions,sections),
+                       file_name=f"{ticker}_investment_research.md",mime="text/markdown",type="primary")
+
 
     st.subheader("Financial statements")
     t1,t2=st.tabs(["Year-over-year charts","Statement lines"])
@@ -540,136 +641,6 @@ elif page=="Company Profile":
         st.markdown(f"[Review source financial statements](https://finance.yahoo.com/quote/{ticker}/financials/) · "
                     f"[SEC filings](https://www.sec.gov/cgi-bin/browse-edgar?action=getcompany&CIK={ticker}&type=10-K)")
         st.caption("Market capitalization and latest FY figures use different dates. Do not treat the derived ratios as historical backtests.")
-
-elif page=="Research Desk":
-    eyebrow("Buy and avoid cases")
-    st.title("Research Desk")
-    st.caption("A rule-based call from the accounting evidence, with an editable investment case · verify against the filings before acting")
-    def shortlist(df,cols,cfg,title,key,empty):
-        st.markdown(f"**{title}**")
-        if df.empty:st.info(empty);return
-        data=df.head(8)
-        tickers=list(data.Ticker)
-        def pick():
-            try:rows=st.session_state[key].selection.rows
-            except (KeyError,AttributeError):rows=[]
-            if rows:go_to(tickers[rows[0]])
-        st.dataframe(data[cols],column_config=cfg,hide_index=True,width="stretch",
-                     height=table_height(len(data)),placeholder=MISSING,
-                     on_select=pick,selection_mode="single-row",key=key)
-    a,b=st.columns(2)
-    with a:shortlist(screen_frame(longs),["Ticker","Company","Long score"],SCREEN_CFG,"▲ Buy candidates","rs_long",
-                     "No qualifying companies. Adjust the filters.")
-    with b:shortlist(screen_frame(shorts),["Ticker","Company","Risk flags"],SCREEN_CFG,"▼ Companies to avoid","rs_short",
-                     "No qualifying companies. Adjust the filters.")
-    st.caption("Select a row to analyse that company below, or search for any company.")
-    st.divider()
-    ticker=choose_company(view,"research_select","Company to research")
-    r=view.loc[view.ticker.eq(ticker)].iloc[0]
-    findings=describe(r,base)
-    case=investment_case(r,findings,settings)
-    st.subheader(f"{r['name']} · {ticker}")
-    st.html(pr.bottom_line_html(r,findings,settings,P))
-    st.caption("Rule-based call from the accounting screens and valuation below (current screen settings). "
-               "No price target or return forecast. Verify against the 10-K before relying on it.")
-    ps,sps=findings["ps"],findings["sector_ps"]
-    vs=None
-    if np.isfinite(ps) and np.isfinite(sps) and sps>0:
-        vs=f"{fmt_pct(ps/sps-1,0,signed=True)} vs sector"
-    a,b,c,d=st.columns(4)
-    a.metric("Price / sales",fmt_multiple(ps),vs,delta_color="inverse",border=True,
-             help="Current market cap ÷ latest annual revenue. Lower = cheaper per dollar of sales.")
-    b.metric("Sector median P/S",fmt_multiple(sps),border=True,
-             help=f"Median across {findings['peers']} comparable {r.sector} companies.")
-    c.metric("Earnings yield",fmt_pct(findings["earnings_yield"]),border=True,
-             help="Annual net income ÷ current market cap. Higher = more earnings per dollar invested. Mixed dates: historical FY earnings vs today's market cap.")
-    d.metric("Cash-flow yield",fmt_pct(findings["cashflow_yield"]),border=True,
-             help="Annual operating cash flow ÷ current market cap. Mixed dates: historical FY cash flow vs today's market cap.")
-    left,right=st.columns(2)
-    with left.container(border=True):
-        st.markdown("#### ▲ What supports a long case")
-        if findings["strengths"]:st.markdown(md("\n".join("- "+t for t in findings["strengths"])))
-        else:st.caption("No quantitative strengths established.")
-    with right.container(border=True):
-        st.markdown("#### ▼ What supports a bearish case")
-        if findings["risks"]:st.markdown(md("\n".join("- "+t for t in findings["risks"])))
-        else:st.caption("No quantified accounting risks under current criteria.")
-    with st.expander("What could invalidate this conclusion?",expanded=True):
-        st.markdown(md("\n".join("- "+g for g in findings["gaps"][:8])))
-
-    st.subheader("Valuation sensitivity")
-    st.caption("Illustrative sales multiples are editable assumptions—not forecasts or a price target.")
-    low,mid,high=st.columns(3)
-    with low:bear=st.number_input("Bear case P/S",min_value=0.1,value=2.0,step=0.5)
-    with mid:base_multiple=st.number_input("Base case P/S",min_value=0.1,value=4.0,step=0.5)
-    with high:bull=st.number_input("Bull case P/S",min_value=0.1,value=6.0,step=0.5)
-    scen=scenario(r,[("Bear",bear),("Base",base_multiple),("Bull",bull)])
-    chart=scen.loc[scen["Implied change"].notna()].copy()
-    if len(chart):
-        chart["Implied change (%)"]=chart["Implied change"]*100
-        colors=[TONE_HEX[GOOD] if v>=0 else TONE_HEX[BAD] for v in chart["Implied change (%)"]]
-        fig=go.Figure(go.Bar(x=chart.Scenario,y=chart["Implied change (%)"],marker_color=colors,
-                             text=[fmt_pct(v,1,signed=True) for v in chart["Implied change"]],textposition="outside",
-                             cliponaxis=False,customdata=chart["Sales multiple"],
-                             hovertemplate="%{x} case · %{customdata:.1f}× sales<br>%{y:+.1f}% vs today's market cap<extra></extra>"))
-        fig.add_hline(y=0,line_width=1,line_color=PRIOR)
-        fig.update_layout(title="Implied market-cap change versus today",yaxis_title="Change vs current market cap (%)",showlegend=False)
-        c1,c2=st.columns([3,2])
-        with c1:show_chart(fig,330)
-        with c2:
-            st.markdown(" ")
-            st.dataframe(pd.DataFrame({"Scenario":scen.Scenario,"P/S":[fmt_multiple(v) for v in scen["Sales multiple"]],
-                                       "Implied market cap":[fmt_money(v) for v in scen["Implied market cap"]],
-                                       "vs today":[fmt_pct(v,1,signed=True) for v in scen["Implied change"]]}),
-                         hide_index=True,width="stretch")
-            st.caption(md(f"Today's market cap: {fmt_money(n(r,'market_cap'))} · latest annual revenue: {fmt_money(n(r,'revenue'))} · "
-                          f"current P/S {fmt_multiple(ps)} (sector median {fmt_multiple(sps)}). A scenario at the current P/S implies 0% change."))
-    st.caption("Revenue is annual historical data; market cap is a recent snapshot. Neither the multiples nor implied changes account for new earnings, share issuance or dilution.")
-
-    st.subheader("Investment case")
-    st.caption("Pre-filled from the analysis above. Edit any section; your edits are kept for this company, and "
-               "the working paper records whether each section is generated or analyst-edited.")
-    # Drafts are stored per company, so text written for one ticker can never
-    # appear in (or be exported with) another company's working paper. Only
-    # analyst edits are stored; untouched fields follow the generated case.
-    drafts=st.session_state.setdefault("research_drafts",{}).setdefault(ticker,{})
-    generated={"position":case["position"],"thesis":case["thesis"],"catalyst":case["catalyst"],
-               "counter":case["counterargument"],"invalid":case["invalidation"],"filing":case["filing_reference"]}
-    def draft_field(widget,field,label,**kw):
-        gen=generated[field]
-        v=widget(label,value=drafts.get(field,gen),key=f"rd_{field}_{ticker}_{hashlib.md5(gen.encode()).hexdigest()[:8]}",**kw)
-        if v!=gen:drafts[field]=v
-        else:drafts.pop(field,None)
-        return v
-    positions=["Long","Short / avoid","No position","Under review"]
-    with st.container(border=True):
-        pos_value=drafts.get("position",generated["position"])
-        position=st.selectbox("Call",positions,index=positions.index(pos_value) if pos_value in positions else 2,
-                              format_func=lambda p_:pr.CALL_NAME.get(p_,p_),
-                              key=f"rd_position_{ticker}_{generated['position']}")
-        if position!=generated["position"]:drafts["position"]=position
-        else:drafts.pop("position",None)
-        thesis=draft_field(st.text_area,"thesis","Investment thesis",height=170)
-        catalyst=draft_field(st.text_area,"catalyst","Catalyst and expected timing",height=80)
-        counter=draft_field(st.text_area,"counter","Strongest counterargument",height=95)
-        invalid=draft_field(st.text_area,"invalid","What evidence would invalidate the thesis?",height=80)
-        filing=draft_field(st.text_input,"filing","SEC filing or issuer annual-report URL")
-        edited=sorted(drafts)
-        if edited:
-            st.caption("Analyst-edited: "+", ".join(edited))
-            if st.button("Reset to the generated case",key=f"rd_reset_{ticker}"):
-                drafts.clear();st.rerun()
-    sections=dict(position=pr.CALL_NAME.get(position,position),thesis=thesis,catalyst=catalyst,
-                  counterargument=counter,invalidation=invalid,filing_reference=filing,
-                  conviction=pr.EVIDENCE.get(case["conviction"],"").replace(" evidence","") if position==case["position"] else "",
-                  edited=", ".join(sorted(drafts)) or "none (generated case)")
-    require=[thesis.strip(),catalyst.strip(),counter.strip(),invalid.strip(),filing.strip()]
-    if not all(require):
-        st.info("Some sections are empty: thesis, catalyst, counterargument, invalidation and filing reference make a complete case.")
-    assumptions={"Bear P/S":bear,"Base P/S":base_multiple,"Bull P/S":bull}
-    st.download_button("Download research working paper",report(r,findings,assumptions,sections),
-                       file_name=f"{ticker}_investment_research.md",mime="text/markdown",type="primary")
-    st.markdown(f"[Open Yahoo Finance financial statements for {ticker}](https://finance.yahoo.com/quote/{ticker}/financials/)")
 
 else:
     eyebrow("Reference")

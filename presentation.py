@@ -77,6 +77,10 @@ def cheaper_than(pct, sector) -> str:
     return "the cheapest in its sector" if p >= 99.5 else f"cheaper than {int(round(p))}% of peers"
 
 
+def a_an(word) -> str:
+    return ("an " if str(word)[:1].lower() in "aeiou" else "a ") + str(word)
+
+
 def sector_word(sector) -> str:
     return str(sector or "sector")
 
@@ -248,7 +252,7 @@ def bottom_line(row, settings=None) -> str:
     ni, cfo = num(get(row, "net_income")), num(get(row, "operating_cash_flow"))
     if pos == "Long":
         g = num(get(row, "GPA_sector_pct"))
-        s = (f"{'Very profitable' if ok(g) and g >= 80 else 'Profitable'} and cheap for a {sector} company"
+        s = (f"{'Very profitable' if ok(g) and g >= 80 else 'Profitable'} and cheap for {a_an(sector)} company"
              + (", with profits backed by cash." if ok(ni) and ok(cfo) and cfo > ni > 0 else "."))
         if fired:
             s += f" One concern to watch: {fired[0]}." if len(fired) == 1 else f" {len(fired)} concerns to watch."
