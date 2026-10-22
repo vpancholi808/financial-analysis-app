@@ -146,3 +146,21 @@ def test_needs_sec_for_blanks_or_due_annual_report():
     assert not needs_sec(dict(full, fiscal_year_end="2026-06-30"), today="2026-10-21")
     assert needs_sec(dict(full, fiscal_year_end="2025-08-31"), today="2026-10-21")
     assert needs_sec(dict(full, sga=np.nan, fiscal_year_end="2026-06-30"), today="2026-10-21")
+
+
+def test_user_agent_with_line_break_becomes_one_line():
+    from sec_edgar import clean_user_agent, SecClient
+    assert clean_user_agent("Jane Doe\r\njane@example.com ") == "Jane Doe jane@example.com"
+    import requests
+    c = SecClient(user_agent="Jane Doe\r\njane@example.com", pause=0)
+    assert c.session.headers["User-Agent"] == "Jane Doe jane@example.com" and c.contact_set
+    requests.Request("GET", "https://example.com", headers=dict(c.session.headers)).prepare()  # no InvalidHeader
+
+
+def test_saved_errors_never_contain_the_contact():
+    from sec_edgar import redact
+    msg = ("InvalidHeader: Invalid leading whitespace, reserved character(s), or return character(s) in header value: "
+           "'Jane Doe\\r\\njane@example.com'")
+    out = redact(msg)
+    assert "jane@example.com" not in out and "Jane Doe" not in out and "<SEC_USER_AGENT>" in out
+    assert redact("403 Forbidden for bob@x.org") == "403 Forbidden for <email>"
