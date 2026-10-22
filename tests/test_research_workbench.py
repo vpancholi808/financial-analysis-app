@@ -54,3 +54,26 @@ def test_export_preserves_unsupported_research_as_incomplete():
     assert "Not yet provided" in text
     assert "not a trade instruction" in text
     assert "financials/" in text
+
+
+def test_recommendation_table_matches_research_desk_and_labels():
+    import pandas as pd
+    from pathlib import Path
+    from finance_models import prepare, classify, ScreenSettings
+    from research_workbench import recommendation_table, describe, investment_case
+    data = pd.read_csv(Path(__file__).resolve().parents[1] / "universe.csv")
+    s = ScreenSettings(sell_min_flags=2)
+    base = prepare(data); v = classify(base, s)
+    recs = recommendation_table(v, base, s)
+    assert len(recs) == len(v) and recs.index.equals(v.index)
+    assert set(recs.rec_position) <= {"Long", "Short / avoid", "No position", "Not rated"}
+    # Banks, insurers and REITs are never given a call.
+    assert recs.loc[~v.industrial_applicable, "rec_position"].eq("Not rated").all()
+    # Long calls are always long-screen candidates with positive earnings and cash flow.
+    longs = v.loc[recs.rec_position.eq("Long")]
+    assert longs.BUY_candidate.all() and (longs.net_income > 0).all() and (longs.operating_cash_flow > 0).all()
+    assert v.loc[recs.rec_position.eq("Short / avoid"), "SELL_candidate"].all()
+    for i in list(v.index[:40]):
+        c = investment_case(v.loc[i], describe(v.loc[i], base), s)
+        if recs.loc[i, "rec_position"] != "Not rated":
+            assert (c["position"], c["conviction"]) == (recs.loc[i, "rec_position"], recs.loc[i, "rec_conviction"])
