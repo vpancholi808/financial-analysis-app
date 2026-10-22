@@ -13,7 +13,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from finance_models import GICS_SECTORS, ScreenSettings, prepare, classify, scope_filter
-from research_workbench import describe, scenario, report, money, pct, n, change, investment_case
+from research_workbench import describe, scenario, report, money, pct, n, change, investment_case, recommendation_table
 from audit_data import audit_table
 from ui_format import (METRICS, MISSING, TONE_HEX, GOOD, BAD, CAUTION, NEUTRAL, NA,
                        fmt_money, fmt_pct, fmt_multiple, fmt_number, fmt_metric, ordinal,
@@ -194,6 +194,7 @@ settings=ScreenSettings(buy_gpa_pct=gpa,buy_bm_pct=bm,buy_score_min=score,buy_gp
                         sell_sta_pct=sta,sell_snoa_pct=snoa,sell_beneish_cutoff=beneish,sell_min_flags=riskcount)
 selected=scope_filter(base,active_sectors,industry,cap_min*1e9)
 view=classify(selected,settings)
+view=view.join(recommendation_table(view,base,settings))
 longs=view.loc[view.BUY_candidate].sort_values("BUY_score",ascending=False)
 shorts=view.loc[view.SELL_candidate].sort_values(["SELL_flag_count","STA"],ascending=[False,False])
 
@@ -224,8 +225,8 @@ def rank_col(label,help_text):
 def screen_frame(df):
     status=[screen_status(r)[0] for _,r in df.iterrows()]
     return pd.DataFrame({
-        "Ticker":df.ticker.values,"Company":df["name"].values,"Sector":df.sector.values,
-        "Market cap":(df.market_cap/1e9).values,"Status":status,
+        "Ticker":df.ticker.values,"Company":df["name"].values,"Recommendation":df.rec_label.values,
+        "Sector":df.sector.values,"Market cap":(df.market_cap/1e9).values,"Status":status,
         "GPA":(df.GPA*100).values,"GPA rank":df.GPA_sector_pct.values,
         "B/M":df.BM.values,"B/M rank":df.BM_sector_pct.values,
         "Long score":df.BUY_score.values,
@@ -239,6 +240,10 @@ def screen_frame(df):
     })
 
 SCREEN_CFG={**cfg_common(),
+    "Recommendation":CC.TextColumn("Recommendation",width="medium",
+        help="Rule-based call with conviction. ▲ Long: passes the long screen with positive, cash-backed earnings and no risk check. "
+             "▼ Short / avoid: enough independent accounting-risk checks trigger. ○ No position: neither, or both. "
+             "– Not rated: bank, insurer, REIT or stale data. Full reasoning on the Research Desk."),
     "Status":CC.TextColumn("Screen result",help="▲ passes the long screen · ▼ risk-flagged · ◆ both · ● neither · – bank/insurer/REIT (not scored)."),
     "GPA":pct_col("GPA","Gross profitability"),
     "GPA rank":rank_col("Profitability rank","Gross profitability (GPA) percentile within its sector; 100 = most profitable."),
@@ -267,6 +272,9 @@ if page=="S&P 500 Screener":
     if n_spec:summary+=f" {n_spec} banks, insurers and REITs are listed but not scored."
     n_stale=int((view.industrial_applicable & view.stale_statements).sum())
     if n_stale:summary+=f" {n_stale} with statements older than about 15 months {'is' if n_stale==1 else 'are'} not scored until the data refreshes."
+    n_long=int(view.rec_position.eq("Long").sum());n_short=int(view.rec_position.eq("Short / avoid").sum())
+    summary+=(f" After the earnings and conflict checks, the recommendation is **▲ Long for {n_long}** and "
+              f"**▼ Short / avoid for {n_short}** (see the Recommendation column).")
     st.markdown(summary)
     a,b,c,d=st.columns(4)
     a.metric("Companies in view",f"{len(view):,}",border=True,
@@ -285,8 +293,8 @@ if page=="S&P 500 Screener":
         st.markdown("Ranked by **long score**. Bars show where each company sits **within its own sector** (100 = best).")
         if longs.empty:st.info("No qualifying companies. Adjust the filters or screen settings.")
         else:
-            data=screen_frame(longs)[["Ticker","Company","Sector","Market cap","Long score","GPA rank","GPA","B/M rank","B/M","Risk flags","FY end"]]
-            ev=st.dataframe(data,column_config=SCREEN_CFG,hide_index=True,width="stretch",
+            data=screen_frame(longs)[["Ticker","Company","Recommendation","Sector","Market cap","Long score","GPA rank","GPA","B/M rank","B/M","Risk flags","FY end"]]
+            ev=st.dataframe(styled(data,["Recommendation"]),column_config=SCREEN_CFG,hide_index=True,width="stretch",
                             height=table_height(len(data)),placeholder=MISSING,
                             on_select="rerun",selection_mode="single-row",key="tbl_long")
             selection_actions(ev,data,"tbl_long")
@@ -297,7 +305,7 @@ if page=="S&P 500 Screener":
             rows=[]
             for _,r in shorts.iterrows():
                 ch=risk_checks(r,settings)
-                rows.append({"Ticker":r.ticker,"Company":r["name"],"Sector":r.sector,"Risk flags":r.SELL_flag_count,
+                rows.append({"Ticker":r.ticker,"Company":r["name"],"Recommendation":r.rec_label,"Sector":r.sector,"Risk flags":r.SELL_flag_count,
                              "Accruals check":ch[0]["label"],"Net op. assets check":ch[1]["label"],
                              "Manipulation check":ch[2]["label"],"Distress check":ch[3]["label"],
                              "Accruals":n(r,"STA")*100,"SNOA value":n(r,"SNOA")*100,"M-score":n(r,"Beneish_M"),
@@ -313,7 +321,7 @@ if page=="S&P 500 Screener":
                  "Accruals":pct_col("STA","Accruals value"),
                  "SNOA value":pct_col("SNOA","Net op. assets value"),
                  "M-score":CC.NumberColumn("M-score",format="%.2f",help=help_for("Beneish_M"))}
-            ev=st.dataframe(styled(data,["Accruals check","Net op. assets check","Manipulation check","Distress check","Distress zone"]),
+            ev=st.dataframe(styled(data,["Recommendation","Accruals check","Net op. assets check","Manipulation check","Distress check","Distress zone"]),
                             column_config=cfg,hide_index=True,width="stretch",
                             height=table_height(len(data)),placeholder=MISSING,
                             on_select="rerun",selection_mode="single-row",key="tbl_risk")
@@ -379,16 +387,36 @@ if page=="S&P 500 Screener":
                 "Risk":CC.NumberColumn("▼ Risk-flagged",format="%d")})
         st.caption("Banks, insurers and REITs remain visible in the index, but are excluded from industrial factor comparisons.")
     with t5:
-        data=screen_frame(view.sort_values("market_cap",ascending=False))
-        st.markdown(f"All **{len(data)}** companies in view, largest first. Click a column header to sort.")
-        ev=st.dataframe(styled(data,["Status","Distress zone"]),column_config=SCREEN_CFG,hide_index=True,
+        rec_order={"Long":0,"Short / avoid":1,"No position":2,"Not rated":3}
+        conv_order={"High":0,"Moderate":1,"Low":2,"":3}
+        show=st.segmented_control("Show",["All","▲ Long","▼ Short / avoid","○ No position","– Not rated"],
+                                  default="All",key="rec_filter")
+        pick={"▲ Long":"Long","▼ Short / avoid":"Short / avoid","○ No position":"No position","– Not rated":"Not rated"}.get(show or "All")
+        shown=view if pick is None else view.loc[view.rec_position.eq(pick)]
+        shown=shown.assign(_r=shown.rec_position.map(rec_order),_c=shown.rec_conviction.map(conv_order)) \
+                   .sort_values(["_r","_c","market_cap"],ascending=[True,True,False])
+        data=screen_frame(shown)
+        st.markdown(f"**{len(data)}** companies, recommendations first (Long, then Short / avoid, by conviction), then by size. "
+                    "Click a column header to sort, or select a row to open the company.")
+        ev=st.dataframe(styled(data,["Recommendation","Status","Distress zone"]),column_config=SCREEN_CFG,hide_index=True,
                         width="stretch",height=560,placeholder=MISSING,
                         on_select="rerun",selection_mode="single-row",key="tbl_all")
         selection_actions(ev,data,"tbl_all")
-        export=view[["ticker","name","sector","industry","market_cap","GPA","GPA_sector_pct","BM","BM_sector_pct",
-                     "BUY_score","BUY_candidate","STA","SNOA","Beneish_M","Altman_Z","Altman_zone",
-                     "SELL_flag_count","SELL_candidate","conflicting_signals"]]
-        st.download_button("Download this screen (CSV)",export.to_csv(index=False),"sp500_screen.csv","text/csv")
+        recs=shown.loc[shown.rec_position.isin(["Long","Short / avoid"]),
+                       ["ticker","name","sector","rec_position","rec_conviction","rec_summary","market_cap","BUY_score",
+                        "GPA_sector_pct","BM_sector_pct","SELL_flag_count","fiscal_year_end","price_asof"]] \
+                 .rename(columns={"ticker":"Ticker","name":"Company","sector":"Sector","rec_position":"Recommendation",
+                                  "rec_conviction":"Conviction","rec_summary":"Reason","market_cap":"Market cap (USD)",
+                                  "BUY_score":"Long score","GPA_sector_pct":"Profitability rank","BM_sector_pct":"Value rank",
+                                  "SELL_flag_count":"Risk checks triggered","fiscal_year_end":"FY end","price_asof":"Market cap date"})
+        export=shown[["ticker","name","sector","industry","rec_position","rec_conviction","market_cap","GPA","GPA_sector_pct","BM","BM_sector_pct",
+                      "BUY_score","BUY_candidate","STA","SNOA","Beneish_M","Altman_Z","Altman_zone",
+                      "SELL_flag_count","SELL_candidate","conflicting_signals"]].rename(columns={"rec_position":"recommendation","rec_conviction":"conviction"})
+        d1,d2=st.columns(2)
+        d1.download_button(f"Download buy / sell list ({len(recs)} companies, CSV)",recs.to_csv(index=False),
+                           "sp500_recommendations.csv","text/csv",type="primary",width="stretch",
+                           disabled=recs.empty)
+        d2.download_button("Download full screen (CSV)",export.to_csv(index=False),"sp500_screen.csv","text/csv",width="stretch")
     st.caption("Definitions, formulas and the data-quality audit are on the **Glossary & Data** page.")
 
 elif page=="Company Profile":

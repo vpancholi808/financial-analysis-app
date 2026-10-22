@@ -342,3 +342,33 @@ def investment_case(row,findings,settings=None):
         catalyst=f"Re-evaluate after {report_txt}.",
         counterargument="A qualitative view (products, management, guidance) could still justify a position; the accounting screen does not.",
         invalidation="A long case opens if both ranks pass the long thresholds; a short case if enough risk checks trigger.")
+
+def sector_ps_medians(peers, minimum=5):
+    """Sector median market cap / revenue, computed once (same rule as sector_multiple)."""
+    if not isinstance(peers,pd.DataFrame) or peers.empty:return {}
+    t=peers
+    if "industrial_applicable" in t:t=t.loc[t.industrial_applicable.astype(bool)]
+    if "has_matching_currency" in t:t=t.loc[t.has_matching_currency.astype(bool)]
+    rev=pd.to_numeric(t["revenue"],errors="coerce");cap=pd.to_numeric(t["market_cap"],errors="coerce")
+    ps=(cap/rev).where(rev>0).replace([np.inf,-np.inf],np.nan)
+    g=ps.groupby(t["sector"])
+    return {s:float(m) for s,m in g.median().items() if g.count()[s]>=minimum}
+
+REC_LABEL={"Long":"▲ Long","Short / avoid":"▼ Short / avoid","No position":"○ No position"}
+
+def recommendation_table(classified, peers, settings=None):
+    """investment_case() for every row: position, conviction, label and one-line
+    summary, index-aligned with `classified`."""
+    medians=sector_ps_medians(peers)
+    out=[]
+    for idx,row in classified.iterrows():
+        rev=n(row,"revenue");cap=n(row,"market_cap")
+        findings={"ps":ratio(cap,rev),"sector_ps":medians.get(str(row.get("sector","")),np.nan),
+                  "revenue_growth":change(rev,n(row,"prior_revenue"))}
+        case=investment_case(row,findings,settings)
+        pos=case["position"]
+        not_rated=pos=="No position" and (not bool(row.get("industrial_applicable",True)) or bool(row.get("stale_statements",False)))
+        label=("– Not rated" if not_rated else REC_LABEL.get(pos,pos)+(f" · {case['conviction']}" if case["conviction"] else ""))
+        out.append({"rec_position":"Not rated" if not_rated else pos,"rec_conviction":case["conviction"],
+                    "rec_label":label,"rec_summary":case["summary"]})
+    return pd.DataFrame(out,index=classified.index)
