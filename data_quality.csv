@@ -1,4 +1,10 @@
 ticker,severity,issue,detail
+ACN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
+ABNB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: depreciation;long_term_debt
+GOOGL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;short_term_debt;total_liabilities
+GOOG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;short_term_debt;total_liabilities
+AMZN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt;short_term_debt
+ANET,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 ADP,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
 BIIB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 CDNS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
