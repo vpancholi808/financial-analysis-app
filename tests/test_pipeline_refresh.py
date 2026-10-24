@@ -39,8 +39,10 @@ def test_sec_pass_fills_and_records_check_dates():
 
     rows = {"MU": yahoo_row(), "ZZZ": yahoo_row(ticker="ZZZ")}
     checks, client = {}, FakeClient()
-    log = sec_pass(rows, checks, today="2026-10-21", client=client)
+    notes = {}
+    log = sec_pass(rows, checks, today="2026-10-21", client=client, notes=notes)
     assert rows["MU"]["sga"] == 132 and "SEC FILLED MU" in log[0]
+    assert notes["MU"].startswith("2026-10-21: filled") and "not in the SEC ticker list" in notes["ZZZ"]
     assert any("SEC NO CIK ZZZ" in line for line in log)
     assert checks["MU"].startswith("2026-10-21|")
     # Checked today: not fetched again the same day.
