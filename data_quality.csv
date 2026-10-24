@@ -24,7 +24,7 @@ FDX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 FLEX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 HUM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: current_assets;current_liabilities;depreciation;preferred_equity;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
 ISRG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
-JBL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+JBL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 JNJ,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;retained_earnings
 LEN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 MLM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: net_ppe;preferred_equity;prior_preferred_equity
