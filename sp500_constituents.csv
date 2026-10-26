@@ -378,14 +378,13 @@ PEG,PEG,Public Service Enterprise Group,Utilities,Electric Utilities
 PTC,PTC,PTC Inc.,Information Technology,Application Software
 PSA,PSA,Public Storage,Real Estate,Self-Storage REITs
 PHM,PHM,PulteGroup,Consumer Discretionary,Homebuilding
-PWR,PWR,Quanta Services,Industrials,Construction & Engineering
-QCOM,QCOM,Qualcomm,Information Technology,Semiconductors
-DGX,DGX,Quest Diagnostics,Health Care,Health Care Services
 Q,Q,Qnity Electronics,Information Technology,Semiconductor Materials & Equipment
+QCOM,QCOM,Qualcomm,Information Technology,Semiconductors
+PWR,PWR,Quanta Services,Industrials,Construction & Engineering
+DGX,DGX,Quest Diagnostics,Health Care,Health Care Services
 RL,RL,Ralph Lauren Corporation,Consumer Discretionary,"Apparel, Accessories & Luxury Goods"
 RJF,RJF,Raymond James Financial,Financials,Investment Banking & Brokerage
 RDDT,RDDT,Reddit,Communication Services,Interactive Media & Services
-RTX,RTX,RTX Corporation,Industrials,Aerospace & Defense
 O,O,Realty Income,Real Estate,Retail REITs
 REG,REG,Regency Centers,Real Estate,Retail REITs
 REGN,REGN,Regeneron Pharmaceuticals,Health Care,Biotechnology
@@ -399,6 +398,7 @@ ROL,ROL,"Rollins, Inc.",Industrials,Environmental & Facilities Services
 ROP,ROP,Roper Technologies,Information Technology,Electronic Equipment & Instruments
 ROST,ROST,Ross Stores,Consumer Discretionary,Apparel Retail
 RCL,RCL,Royal Caribbean Group,Consumer Discretionary,"Hotels, Resorts & Cruise Lines"
+RTX,RTX,RTX Corporation,Industrials,Aerospace & Defense
 SPGI,SPGI,S&P Global,Financials,Financial Exchanges & Data
 CRM,CRM,Salesforce,Information Technology,Application Software
 SNDK,SNDK,Sandisk,Information Technology,"Technology Hardware, Storage & Peripherals"
@@ -409,7 +409,7 @@ SRE,SRE,Sempra,Utilities,Multi-Utilities
 NOW,NOW,ServiceNow,Information Technology,Systems Software
 SHW,SHW,Sherwin-Williams,Materials,Specialty Chemicals
 SPG,SPG,Simon Property Group,Real Estate,Retail REITs
-SKYD,SKYD,Skydance Corporation,Communication Services,Movies & Entertainment
+SKYD,SKYD,Skydance,Communication Services,Movies & Entertainment
 SWKS,SWKS,Skyworks Solutions,Information Technology,Semiconductors
 SJM,SJM,J.M. Smucker Company (The),Consumer Staples,Packaged Foods & Meats
 SW,SW,Smurfit Westrock,Materials,Paper & Plastic Packaging Products & Materials

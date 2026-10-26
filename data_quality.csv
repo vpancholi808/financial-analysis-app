@@ -36,8 +36,8 @@ OKE,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 PANW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PAYX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 PHM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity
-QCOM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
 Q,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity;prior_short_term_debt
+QCOM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
 REGN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SNDK,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SKYD,warning,MISSING_NET_INCOME,Required source financial figure unavailable
