@@ -6,6 +6,7 @@ GOOG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;sh
 AMZN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt;short_term_debt
 ANET,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 ADP,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
+AZO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 BIIB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 CDNS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 CASY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
