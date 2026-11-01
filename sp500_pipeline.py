@@ -169,13 +169,14 @@ def sec_due(symbol, row, last_checks, today):
     report_due = needs_sec({k: 1.0 for k in TRIGGER_FIELDS} | {"fiscal_year_end": row.get("fiscal_year_end")}, today=today)
     return age >= (1 if report_due else SEC_RECHECK_DAYS)
 
-def sec_pass(rows, last_checks, today=None, client=None, limit=250, status=None, abort_after=5):
+def sec_pass(rows, last_checks, today=None, client=None, limit=250, status=None, abort_after=5, notes=None):
     """Fill Yahoo blanks / supply newer fiscal years from SEC 10-K data.
     Returns log lines; rows, last_checks and status are updated in place. If
     the first `abort_after` lookups all fail (e.g. SEC refusing the requests),
     the pass stops and the reason is recorded in status."""
     today = str(pd.Timestamp(today or datetime.now(timezone.utc).date()).date())
     status = {} if status is None else status
+    notes = {} if notes is None else notes      # ticker -> reason of the latest lookup (no personal data)
     status.update(date=today, due=0, filled=0, nothing_to_fill=0, failed=0, no_cik=0, last_error="", aborted=False)
     due = [s for s, r in rows.items() if sec_due(s, r, last_checks, today)][:limit]
     status["due"] = len(due)
@@ -200,15 +201,18 @@ def sec_pass(rows, last_checks, today=None, client=None, limit=250, status=None,
         if facts is None:
             status["no_cik"] += 1
             log.append(f"SEC NO CIK {symbol}")
+            notes[symbol] = f"{today}: ticker not in the SEC ticker list"
         else:
             updated, filled, note = fill_from_sec(rows[symbol], facts)
             if filled:
                 rows[symbol] = updated
                 status["filled"] += 1
                 log.append(f"SEC FILLED {symbol} {','.join(filled)} ({note})")
+                notes[symbol] = f"{today}: filled {','.join(filled)}"
             else:
                 status["nothing_to_fill"] += 1
                 log.append(f"SEC NOTHING TO FILL {symbol} ({note})")
+                notes[symbol] = f"{today}: nothing filled ({note[:200]})"
         last_checks[symbol] = f"{today}|{rows[symbol].get('fiscal_year_end')}"
     return log
 
@@ -277,9 +281,10 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
         if pause: time.sleep(pause)
     sec_checks = {str(k):str(v) for k,v in prior.get("sec_last_check",{}).items()}
     sec_status = dict(prior.get("sec_status",{}))
+    sec_notes = {str(k):str(v) for k,v in prior.get("sec_notes",{}).items()}
     if use_sec:
         try:
-            for line in sec_pass(rows, sec_checks, status=sec_status):
+            for line in sec_pass(rows, sec_checks, status=sec_status, notes=sec_notes):
                 print(line, flush=True)
         except Exception as exc:   # never lose Yahoo data because SEC is unavailable
             sec_status.update(aborted=True, last_error=redact(f"{type(exc).__name__}: {str(exc)[:160]}"))
@@ -308,6 +313,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
         "stale_refresh_last_attempt":stale_last,
         "sec_last_check":sec_checks,
         "sec_status":sec_status,
+        "sec_notes":sec_notes,
         "schema_refresh_pending":sum(s in rows and refresh_attempts.get(s,0)==0 for s in members_map),
         "attempted_total":sum(attempts.values()),"batch_size":batch_size,
         "quality_warning_count":sum(a["severity"]=="warning" for a in audit),
@@ -319,7 +325,7 @@ def collect(batch_size=75, retry_cap=3, pause=1.0, refresh_index=True, use_sec=T
                  else "collecting",
     }
     write_state(state)
-    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts","stale_refresh_last_attempt","sec_last_check")},indent=2),flush=True)
+    print(json.dumps({k:v for k,v in state.items() if k not in ("membership_snapshot","attempts","schema_refresh_attempts","stale_refresh_last_attempt","sec_last_check","sec_notes")},indent=2),flush=True)
     # Never fail away real records because a subset of Yahoo retrievals were incomplete.
     return state
 

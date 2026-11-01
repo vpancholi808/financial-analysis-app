@@ -164,3 +164,24 @@ def test_saved_errors_never_contain_the_contact():
     out = redact(msg)
     assert "jane@example.com" not in out and "Jane Doe" not in out and "<SEC_USER_AGENT>" in out
     assert redact("403 Forbidden for bob@x.org") == "403 Forbidden for <email>"
+
+
+def test_newer_stub_period_is_not_used():
+    # Newer 10-K covers only part of a year (e.g. after a merger): no full-year income lines.
+    stub = year(1.2)
+    for tag in ("Revenues", "NetIncomeLoss", "NetCashProvidedByUsedInOperatingActivities"):
+        stub.pop(tag)
+    f = facts_for({FY24: year(1.0), FY25: year(1.1), FY26: stub})
+    usd = f["facts"]["us-gaap"].setdefault("Revenues", {"units": {"USD": []}})["units"]["USD"]
+    usd.append(fact(FY26, 500, start="2026-03-01"))           # ~6-month successor period
+    row, filled, note = fill_from_sec(yahoo_row(), f)
+    assert filled == [] and row["fiscal_year_end"] == "2025-08-31" and "full-year" in note
+
+
+def test_common_equity_from_total_equity_less_tagged_nci():
+    v = year(1.1)
+    v.pop("StockholdersEquity")
+    v.update(StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest=900, MinorityInterest=20)
+    assert extract_year(facts_for({FY25: v}), FY25)["common_equity"] == pytest.approx(880)
+    v.pop("MinorityInterest")                                  # NCI not tagged: not assumed zero
+    assert np.isnan(extract_year(facts_for({FY25: v}), FY25)["common_equity"])
