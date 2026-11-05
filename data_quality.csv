@@ -54,4 +54,4 @@ UNH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 WMT,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: sga
 WDC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: long_term_debt
 ZTS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
-FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 1 / 3
+FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 2 / 3
