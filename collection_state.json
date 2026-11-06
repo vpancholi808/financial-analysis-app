@@ -1,7 +1,7 @@
 {
-  "attempted_total": 3,
+  "attempted_total": 4,
   "attempts": {
-    "FISV": 2,
+    "FISV": 3,
     "OKTA": 1
   },
   "batch_size": 510,
@@ -515,7 +515,7 @@
   "membership_source": "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv",
   "membership_status": "fresh",
   "missing_records": 1,
-  "new_records_last_batch": 1,
+  "new_records_last_batch": 0,
   "quality_critical_count": 0,
   "quality_warning_count": 3,
   "schema_refresh_attempts": {
@@ -1026,14 +1026,14 @@
   "schema_refresh_pending": 0,
   "sec_last_check": {
     "ABNB": "2026-10-23|2025-12-31",
-    "ACN": "2026-10-30|2026-08-31",
+    "ACN": "2026-11-06|2026-08-31",
     "ADP": "2026-10-22|2026-06-30",
-    "AEE": "2026-10-30|2025-12-31",
-    "AEP": "2026-10-30|2025-12-31",
+    "AEE": "2026-11-06|2025-12-31",
+    "AEP": "2026-11-06|2025-12-31",
     "AMZN": "2026-10-23|2025-12-31",
-    "ANET": "2026-10-30|2025-12-31",
+    "ANET": "2026-11-06|2025-12-31",
     "ATO": "2026-11-05|2025-09-30",
-    "AWK": "2026-10-30|2025-12-31",
+    "AWK": "2026-11-06|2025-12-31",
     "AZO": "2026-11-03|2026-08-29",
     "BIIB": "2026-10-22|2025-12-31",
     "BKNG": "2026-11-05|2025-12-31",
@@ -1065,7 +1065,7 @@
     "FDX": "2026-11-05|2026-05-31",
     "FDXF": "2026-11-05|2026-05-31",
     "FE": "2026-11-05|2025-12-31",
-    "FERG": "2026-11-05|2025-07-31",
+    "FERG": "2026-11-06|2025-07-31",
     "FLEX": "2026-10-22|2026-03-31",
     "FOX": "2026-11-05|2026-06-30",
     "FOXA": "2026-11-05|2026-06-30",
@@ -1081,7 +1081,7 @@
     "JNJ": "2026-10-22|2025-12-31",
     "LEN": "2026-11-05|2025-11-30",
     "LMT": "2026-11-05|2025-12-31",
-    "LNT": "2026-10-30|2025-12-31",
+    "LNT": "2026-11-06|2025-12-31",
     "LUV": "2026-11-05|2025-12-31",
     "MLM": "2026-10-22|2025-12-31",
     "MNST": "2026-11-05|2025-12-31",
@@ -1130,13 +1130,13 @@
   "sec_status": {
     "aborted": false,
     "contact_set": true,
-    "date": "2026-11-05",
-    "due": 0,
+    "date": "2026-11-06",
+    "due": 7,
     "failed": 0,
     "filled": 0,
     "last_error": "",
     "no_cik": 0,
-    "nothing_to_fill": 0
+    "nothing_to_fill": 7
   },
   "stale_refresh_last_attempt": {
     "ACN": "2026-10-23",
@@ -1144,13 +1144,13 @@
     "COST": "2026-10-22",
     "CPRT": "2026-10-22",
     "FDS": "2026-10-22",
-    "FERG": "2026-11-05",
+    "FERG": "2026-11-06",
     "JBL": "2026-10-24",
     "MU": "2026-10-22",
     "SKYD": "2026-10-22"
   },
   "statement_completeness": 0.8864541832669323,
-  "status": "collecting",
+  "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-11-05T18:53:37+00:00"
+  "updated_at": "2026-11-06T00:28:28+00:00"
 }
