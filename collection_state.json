@@ -1131,12 +1131,12 @@
     "aborted": false,
     "contact_set": true,
     "date": "2026-11-07",
-    "due": 2,
+    "due": 0,
     "failed": 0,
     "filled": 0,
     "last_error": "",
     "no_cik": 0,
-    "nothing_to_fill": 2
+    "nothing_to_fill": 0
   },
   "stale_refresh_last_attempt": {
     "ACN": "2026-10-23",
@@ -1152,5 +1152,5 @@
   "statement_completeness": 0.8864541832669323,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-11-07T02:08:04+00:00"
+  "updated_at": "2026-11-07T09:00:48+00:00"
 }
