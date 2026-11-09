@@ -20,12 +20,16 @@ CVS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 DHI,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 EW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: common_equity;preferred_equity;prior_common_equity;prior_preferred_equity
 ELV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: cost_of_revenue;current_assets;current_liabilities;depreciation;preferred_equity;prior_cost_of_revenue;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
+FFIV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 FDS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
+FICO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FDX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 FLEX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
+BEN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 HUM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: current_assets;current_liabilities;depreciation;preferred_equity;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
 ISRG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 JBL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
+J,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 JNJ,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;retained_earnings
 LEN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 MLM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: net_ppe;preferred_equity;prior_preferred_equity
@@ -36,14 +40,15 @@ NVDA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;to
 OKE,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PANW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PAYX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
+PTC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PHM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity
 Q,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity;prior_short_term_debt
-QCOM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
 REGN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SNDK,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SKYD,warning,MISSING_NET_INCOME,Required source financial figure unavailable
 SKYD,warning,MISSING_OPERATING_CASH_FLOW,Required source financial figure unavailable
 SKYD,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
+SWKS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SNA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SOLV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SYY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
@@ -51,7 +56,10 @@ TPL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 TRMB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt
 ULTA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: accounts_receivable;gross_profit_reported;prior_receivables
 UNH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_sga;sga
+V,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
+V,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 WMT,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: sga
+DIS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 WDC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: long_term_debt
 ZTS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 3 / 3
