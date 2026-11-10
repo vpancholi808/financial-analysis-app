@@ -20,12 +20,13 @@ CVS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 DHI,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 EW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: common_equity;preferred_equity;prior_common_equity;prior_preferred_equity
 ELV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: cost_of_revenue;current_assets;current_liabilities;depreciation;preferred_equity;prior_cost_of_revenue;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
+EMR,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FFIV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 FDS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FICO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FDX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 FLEX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
-BEN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+BEN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 HUM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: current_assets;current_liabilities;depreciation;preferred_equity;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
 ISRG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 JBL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
@@ -52,6 +53,8 @@ SWKS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pre
 SNA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SOLV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SYY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+TEL,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
+TEL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 TPL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 TRMB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt
 ULTA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: accounts_receivable;gross_profit_reported;prior_receivables
