@@ -49,13 +49,14 @@ SNDK,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SKYD,warning,MISSING_NET_INCOME,Required source financial figure unavailable
 SKYD,warning,MISSING_OPERATING_CASH_FLOW,Required source financial figure unavailable
 SKYD,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
-SWKS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+SWKS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 SNA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SOLV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SYY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 TEL,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
 TEL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 TPL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+TDG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 TRMB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt
 ULTA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: accounts_receivable;gross_profit_reported;prior_receivables
 UNH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_sga;sga
