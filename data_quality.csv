@@ -45,6 +45,7 @@ PTC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 PHM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity
 Q,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity;prior_short_term_debt
 REGN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+ROK,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 SNDK,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 SKYD,warning,MISSING_NET_INCOME,Required source financial figure unavailable
 SKYD,warning,MISSING_OPERATING_CASH_FLOW,Required source financial figure unavailable
@@ -52,6 +53,7 @@ SKYD,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newe
 SWKS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 SNA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 SOLV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
+SBUX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 SYY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 TEL,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
 TEL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
