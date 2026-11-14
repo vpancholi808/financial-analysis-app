@@ -515,7 +515,7 @@
   "membership_source": "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv",
   "membership_status": "fresh",
   "missing_records": 1,
-  "new_records_last_batch": 1,
+  "new_records_last_batch": 0,
   "quality_critical_count": 0,
   "quality_warning_count": 5,
   "schema_refresh_attempts": {
@@ -1150,12 +1150,12 @@
     "aborted": false,
     "contact_set": true,
     "date": "2026-11-14",
-    "due": 13,
+    "due": 0,
     "failed": 0,
     "filled": 0,
     "last_error": "",
     "no_cik": 0,
-    "nothing_to_fill": 13
+    "nothing_to_fill": 0
   },
   "stale_refresh_last_attempt": {
     "AAPL": "2026-11-09",
@@ -1194,5 +1194,5 @@
   "statement_completeness": 0.8764940239043825,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-11-14T06:50:45+00:00"
+  "updated_at": "2026-11-14T14:23:33+00:00"
 }
