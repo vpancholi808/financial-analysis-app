@@ -5,6 +5,7 @@ GOOGL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;s
 GOOG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;short_term_debt;total_liabilities
 AMZN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt;short_term_debt
 ANET,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+ATO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 ADP,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;short_term_debt
 AZO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 BIIB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
@@ -60,6 +61,7 @@ TEL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer
 TPL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 TDG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 TRMB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt
+TSN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 ULTA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: accounts_receivable;gross_profit_reported;prior_receivables
 UNH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_sga;sga
 V,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
