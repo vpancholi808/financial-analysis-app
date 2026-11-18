@@ -22,7 +22,8 @@ DHI,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 EW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: common_equity;preferred_equity;prior_common_equity;prior_preferred_equity
 ELV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: cost_of_revenue;current_assets;current_liabilities;depreciation;preferred_equity;prior_cost_of_revenue;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
 EMR,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
-FFIV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+FFIV,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
+FFIV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FDS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FICO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 FDX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
@@ -67,7 +68,7 @@ UNH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_pref
 V,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
 V,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 WMT,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: sga
-DIS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+DIS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 WDC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: long_term_debt
 ZTS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 FISV,missing,FINANCIALS_NOT_FETCHED,Yahoo statement attempt count: 3 / 3
