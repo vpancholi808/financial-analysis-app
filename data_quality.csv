@@ -18,7 +18,7 @@ CPRT,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newe
 COST,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 CRH,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: depreciation;prior_depreciation
 CVS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
-DHI,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+DHI,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 EW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: common_equity;preferred_equity;prior_common_equity;prior_preferred_equity
 ELV,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: cost_of_revenue;current_assets;current_liabilities;depreciation;preferred_equity;prior_cost_of_revenue;prior_current_assets;prior_current_liabilities;prior_depreciation;prior_preferred_equity;prior_sga;sga
 EMR,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
