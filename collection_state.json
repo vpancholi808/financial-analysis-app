@@ -1150,12 +1150,12 @@
     "aborted": false,
     "contact_set": true,
     "date": "2026-11-19",
-    "due": 70,
+    "due": 0,
     "failed": 0,
-    "filled": 1,
+    "filled": 0,
     "last_error": "",
     "no_cik": 0,
-    "nothing_to_fill": 69
+    "nothing_to_fill": 0
   },
   "stale_refresh_last_attempt": {
     "AAPL": "2026-11-09",
@@ -1194,5 +1194,5 @@
   "statement_completeness": 0.8685258964143426,
   "status": "needs_manual_review",
   "universe": "SP500",
-  "updated_at": "2026-11-19T03:44:52+00:00"
+  "updated_at": "2026-11-19T13:41:23+00:00"
 }
