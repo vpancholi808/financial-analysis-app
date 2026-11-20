@@ -1,5 +1,6 @@
 ticker,severity,issue,detail
 ACN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
+APD,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 ABNB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: depreciation;long_term_debt
 GOOGL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;short_term_debt;total_liabilities
 GOOG,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;short_term_debt;total_liabilities
