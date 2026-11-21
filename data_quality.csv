@@ -44,7 +44,7 @@ NVDA,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_total_liabilities;to
 OKE,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PANW,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 PAYX,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
-PTC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+PTC,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 PHM,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity
 Q,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: prior_preferred_equity;prior_short_term_debt
 REGN,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
