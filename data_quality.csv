@@ -12,6 +12,7 @@ AZO,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer
 BIIB,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: short_term_debt
 CDNS,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
 CASY,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity
+COR,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: all statement fields (newer 10-K)
 CRL,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt;short_term_debt
 CHD,info,SEC_FILLED_FIELDS,From SEC EDGAR 10-K data: preferred_equity;prior_preferred_equity;prior_short_term_debt;short_term_debt
 CPRT,warning,MISSING_COMMON_EQUITY,Required source financial figure unavailable
